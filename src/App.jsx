@@ -6720,7 +6720,6 @@ function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMo
   return(
     <tr style={{borderBottom:'1px solid #0a1828',opacity:canPick?1:0.35,
       transition:'background .1s',cursor:canPick?'pointer':'default'}}
-      onClick={()=>{if(!canPick)return; setExpanded(e=>!e);}}
       onMouseEnter={e=>{if(canPick)e.currentTarget.style.background='rgba(245,158,11,0.06)';}}
       onMouseLeave={e=>{e.currentTarget.style.background='transparent';}}>
 
@@ -6732,12 +6731,12 @@ function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMo
         </div>
         <div style={{fontSize:10,color:'#475569',marginTop:1}}>{player.team} · {player.decade}</div>
         {/* Expanded: position picker shown inline below name on mobile */}
-        {expanded&&availablePositions.length>1&&(
-          <div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:6}} onClick={e=>e.stopPropagation()}>
+        {expanded&&availablePositions.length>0&&(
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8,padding:'6px',background:'rgba(245,158,11,0.05)',borderRadius:8,border:'1px solid rgba(245,158,11,0.2)'}} >
             {availablePositions.map(pos=>(
               <button key={pos}
-                onClick={e=>{e.stopPropagation();setSelPos(pos);handlePick(pos);}}
-                onTouchEnd={e=>{e.stopPropagation();e.preventDefault();setSelPos(pos);handlePick(pos);}}
+                onClick={e=>{e.preventDefault();setSelPos(pos);handlePick(pos);}}
+                onTouchEnd={e=>{e.preventDefault();setSelPos(pos);handlePick(pos);}}
                 style={{padding:'5px 12px',borderRadius:6,border:`1px solid ${selPos===pos?'#f59e0b':'#334155'}`,background:selPos===pos?'rgba(245,158,11,0.15)':'rgba(8,16,32,0.8)',color:selPos===pos?'#f59e0b':'#94a3b8',fontSize:12,fontWeight:700,cursor:'pointer',transition:'all .1s'}}>
                 {pos}
               </button>
@@ -6785,16 +6784,16 @@ function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMo
       <td style={{padding:'10px 8px',textAlign:'center'}}>
         {canPick&&availablePositions.length>1&&(
           <button
-            onClick={e=>{e.stopPropagation();e.preventDefault();setExpanded(ex=>!ex);}}
-            onTouchEnd={e=>{e.stopPropagation();e.preventDefault();setExpanded(ex=>!ex);}}
+            onClick={e=>{e.preventDefault();setExpanded(ex=>!ex);}}
+            onTouchEnd={e=>{e.preventDefault();setExpanded(ex=>!ex);}}
             style={{background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#000',border:'none',borderRadius:7,padding:'5px 14px',fontWeight:800,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
             PICK
           </button>
         )}
         {canPick&&availablePositions.length===1&&(
           <button
-            onClick={e=>{e.stopPropagation();e.preventDefault();setExpanded(ex=>!ex);}}
-            onTouchEnd={e=>{e.stopPropagation();e.preventDefault();setExpanded(ex=>!ex);}}
+            onClick={e=>{e.preventDefault();setExpanded(ex=>!ex);}}
+            onTouchEnd={e=>{e.preventDefault();setExpanded(ex=>!ex);}}
             style={{background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#000',border:'none',borderRadius:7,padding:'5px 14px',fontWeight:800,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
             PICK
           </button>
