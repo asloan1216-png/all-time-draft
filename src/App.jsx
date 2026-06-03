@@ -6243,12 +6243,13 @@ function simulate(roster, lineup) {
   // Pitching + defense
   let rapg = staffRunsAllowedPerGame(starters, relievers, hitters);
 
-  // Era diversity (win% multiplier)
+  // Era diversity (win% multiplier) 
   const era = eraDiversityBonus(allPlayers);
+  const eraMult = decadeMode ? 1.0 : era.mult;
 
   // Pythagenpat win expectancy, nudged by era diversity
   const rawWinPct = winExpectancy(rpg, rapg);
-  const winPct = Math.min(rawWinPct * era.mult, 0.992); // 0.992 ≈ 161 wins ceiling
+  const winPct = Math.min(rawWinPct * eraMult, 0.992); // 0.992 ≈ 161 wins ceiling
 
   // Monte-Carlo a 162-game season, median of 7 runs for stability
   const sims = Array.from({length:7}, () => {
@@ -6635,12 +6636,12 @@ function SlotMachine({spinning,result,decadeMode,lockedDecade,rerollMode}){
   const teamOnly=decadeMode&&lockedDecade;
   const decadeOnly=decadeMode&&!lockedDecade;
   return(
-    <div style={{textAlign:'center',background:'rgba(6,12,24,0.95)',border:'2px solid #1e3a5f',borderRadius:20,padding:'24px 36px'}}>
-      <div style={{fontSize:10,letterSpacing:4,color:'#334155',marginBottom:14}}>SLOT MACHINE</div>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:14}}>
-        {!decadeOnly&&<div style={{fontSize:28,fontWeight:900,color:spinning?'#1e3a5f':'#f59e0b',transition:'color .15s',fontFamily:'Georgia,serif'}}>{disp.team||'???'}</div>}
-        {!teamOnly&&!decadeOnly&&<div style={{fontSize:22,color:'#0f1f35'}}>·</div>}
-        {!teamOnly&&<div style={{fontSize:28,fontWeight:900,color:spinning?'#1e3a5f':'#60a5fa',transition:'color .15s',fontFamily:'Georgia,serif'}}>{disp.decade}</div>}
+    <div style={{textAlign:'center',background:'rgba(6,12,24,0.95)',border:'2px solid #1e3a5f',borderRadius:16,padding:'16px 24px',width:'100%',maxWidth:360}}>
+      <div style={{fontSize:9,letterSpacing:4,color:'#334155',marginBottom:10}}>SLOT MACHINE</div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+        {!decadeOnly&&<div style={{fontSize:24,fontWeight:900,color:spinning?'#1e3a5f':'#f59e0b',transition:'color .15s',fontFamily:'Georgia,serif'}}>{disp.team||'???'}</div>}
+        {!teamOnly&&!decadeOnly&&<div style={{fontSize:18,color:'#0f1f35'}}>·</div>}
+        {!teamOnly&&<div style={{fontSize:24,fontWeight:900,color:spinning?'#1e3a5f':'#60a5fa',transition:'color .15s',fontFamily:'Georgia,serif'}}>{disp.decade}</div>}
       </div>
       {!spinning&&result&&result.team&&<div style={{fontSize:11,color:'#475569',marginTop:10}}>Pick any player from this pool — you choose the position</div>}
     </div>
@@ -6650,7 +6651,7 @@ function SlotMachine({spinning,result,decadeMode,lockedDecade,rerollMode}){
 // ═══════════════════════════════════════════════════════════════
 // PLAYER ROW (table-based pool display)
 // ═══════════════════════════════════════════════════════════════
-function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMode,budgetLeft,slotsLeft,players,roster}){
+function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMode,budgetLeft,slotsLeft,players,roster,isMobile}){
   const [selPos,setSelPos]=useState(null);
   const [expanded,setExpanded]=useState(false);
   const isH=player.type==='hitter';
@@ -6695,6 +6696,12 @@ function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMo
     {k:'BsR', v:(s.bsr>0?'+':'')+s.bsr},
     {k:'dWAR',v:(s.dwar>0?'+':'')+s.dwar},
   ];
+  const hColsMobile=[
+    {k:'WAR',v:player.avgWARperYear,good:player.avgWARperYear>=6},
+    {k:'OBP', v:fmt3(s.obp), good:s.obp>=0.380},
+    {k:'SLG', v:fmt3(s.slg), good:s.slg>=0.500},
+    {k:'HR',  v:s.hr,        good:s.hr>=30},
+  ];
   // Pitcher stat columns
   const pCols=[
     {k:'WAR',  v:player.avgWARperYear, good:player.avgWARperYear>=5},
@@ -6704,12 +6711,17 @@ function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMo
     {k:'K/9',  v:s.k9,    good:s.k9>=9},
     {k:player.role==='RP'?'WAR/9':'IP', v:player.role==='RP'?s.war9:s.ip},
   ];
-  const cols=isH?hCols:pCols;
+  const pColsMobile=[
+    {k:'WAR',v:player.avgWARperYear,good:player.avgWARperYear>=5},
+    {k:'ERA',v:s.era,good:s.era<3.00},
+    {k:'FIP',v:s.fip,good:s.fip<3.00},
+  ];
+  const cols=isH?(isMobile?hColsMobile:hCols):(isMobile?pColsMobile:pCols);
 
   return(
     <tr style={{borderBottom:'1px solid #0a1828',opacity:canPick?1:0.35,
       transition:'background .1s',cursor:canPick?'pointer':'default'}}
-      onClick={()=>{if(!canPick)return; if(availablePositions.length===1){handlePick(availablePositions[0]);}else setExpanded(e=>!e);}}
+      onClick={()=>{if(!canPick)return; setExpanded(e=>!e);}}
       onMouseEnter={e=>{if(canPick)e.currentTarget.style.background='rgba(245,158,11,0.06)';}}
       onMouseLeave={e=>{e.currentTarget.style.background='transparent';}}>
 
@@ -6725,9 +6737,9 @@ function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMo
           <div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:6}} onClick={e=>e.stopPropagation()}>
             {availablePositions.map(pos=>(
               <button key={pos}
-                onClick={e=>{e.stopPropagation();handlePick(pos);}}
-                onTouchEnd={e=>{e.stopPropagation();e.preventDefault();handlePick(pos);}}
-                style={{padding:'3px 9px',borderRadius:6,border:`1px solid ${(selPos||availablePositions[0])===pos?'#f59e0b':'#334155'}`,background:(selPos||availablePositions[0])===pos?'rgba(245,158,11,0.15)':'transparent',color:(selPos||availablePositions[0])===pos?'#f59e0b':'#64748b',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                onClick={e=>{e.stopPropagation();setSelPos(pos);handlePick(pos);}}
+                onTouchEnd={e=>{e.stopPropagation();e.preventDefault();setSelPos(pos);handlePick(pos);}}
+                style={{padding:'5px 12px',borderRadius:6,border:`1px solid ${selPos===pos?'#f59e0b':'#334155'}`,background:selPos===pos?'rgba(245,158,11,0.15)':'rgba(8,16,32,0.8)',color:selPos===pos?'#f59e0b':'#94a3b8',fontSize:12,fontWeight:700,cursor:'pointer',transition:'all .1s'}}>
                 {pos}
               </button>
             ))}
@@ -6774,16 +6786,16 @@ function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMo
       <td style={{padding:'10px 8px',textAlign:'center'}}>
         {canPick&&availablePositions.length>1&&(
           <button
-            onClick={e=>{e.stopPropagation();e.preventDefault();if(!expanded){setExpanded(true);}else handlePick();}}
-            onTouchEnd={e=>{e.stopPropagation();e.preventDefault();setExpanded(true);}}
+            onClick={e=>{e.stopPropagation();e.preventDefault();setExpanded(ex=>!ex);}}
+            onTouchEnd={e=>{e.stopPropagation();e.preventDefault();setExpanded(ex=>!ex);}}
             style={{background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#000',border:'none',borderRadius:7,padding:'5px 14px',fontWeight:800,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
             PICK
           </button>
         )}
         {canPick&&availablePositions.length===1&&(
           <button
-            onClick={e=>{e.stopPropagation();e.preventDefault();handlePick(availablePositions[0]);}}
-            onTouchEnd={e=>{e.stopPropagation();e.preventDefault();handlePick(availablePositions[0]);}}
+            onClick={e=>{e.stopPropagation();e.preventDefault();setExpanded(ex=>!ex);}}
+            onTouchEnd={e=>{e.stopPropagation();e.preventDefault();setExpanded(ex=>!ex);}}
             style={{background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#000',border:'none',borderRadius:7,padding:'5px 14px',fontWeight:800,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
             PICK
           </button>
@@ -6987,7 +6999,7 @@ function ResultsScreen({result,onReset,onShare}){
           <span style={{fontSize:48,color:'#1e3a5f'}}>-</span>
           <span style={{fontSize:64,fontWeight:700,color:'#1e3a5f',fontFamily:'Georgia,serif'}}>{162-anim}</span>
         </div>
-        <div style={{fontSize:17,fontWeight:600,color:result.benchmark?.color||'#fff',marginBottom:32,lineHeight:1.5}}>{result.benchmark?.label}</div>
+        
         {show&&(
           <div style={{textAlign:'left',marginBottom:32}}>
             {[
@@ -6997,7 +7009,7 @@ function ResultsScreen({result,onReset,onShare}){
               ['Team wRC+', `${result.avgWRC} (${result.avgWRC>=100?'+':''}${result.avgWRC-100}% offense)`],
               ['Win Probability', `${Math.round(result.winPct*1000)/10}%`],
               ['Lineup Construction', `${result.constructionPct>=0?'+':''}${(result.constructionPct*100).toFixed(1)}% runs`],
-              ['Era Diversity', result.era?.label],
+              ...(result.decadeMode ? [] : [['Era Diversity', result.era?.label]]),
             ].map(([l,v])=>(
               <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'7px 0',borderBottom:'1px solid #0a1828',fontSize:13,gap:12}}>
                 <span style={{color:'#475569',flexShrink:0}}>{l}</span><span style={{color:'#e2e8f0',fontWeight:600,textAlign:'right'}}>{v}</span>
@@ -7099,6 +7111,7 @@ export default function App(){
   const [lockedDecade,setLockedDecade]=useState(null); // for Decades mode — null until first spin locks it
   const [decadeMode,setDecadeMode]=useState(false);
   const [rerollMode,setRerollMode]=useState(null); // 'team' or 'decade' during reroll animation
+  const [showRoster,setShowRoster]=useState(false); // mobile: toggle roster sidebar
 
   const filled=Object.values(roster).filter(Boolean).length;
   const needed=getNeededPositions(roster);
@@ -7135,21 +7148,50 @@ export default function App(){
         setPool([]); // no pool yet — user must spin for a team
         return;
       }
-      // Normal spin or decade mode subsequent spins (team only, decade locked)
-      if(isDaily&&dailyRolls.length>0){res=dailyRolls[dailyIdx]||randTeamDecade();setDailyIdx(i=>i+1);}
-      else if(decadeMode && lockedDecade){
-        // Lock the decade, only randomize the team
-        const teams=TEAMS_BY_DECADE[lockedDecade]||[];
-        const team=teams[Math.floor(Math.random()*teams.length)];
-        res={team,decade:lockedDecade};
-      }
-      else res=randTeamDecade();
-      setSpinRes(res);setSpinning(false);setRerollMode(null);
-
       // Exclude by both ID and display name — no drafting Barry Bonds twice
       const draftedIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
       const draftedNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
       const notDrafted=p=>{ if(draftedIds.has(p.id)) return false; const dn=(p.displayName||p.name).replace(/ ([0-9]-yr)$/,''); return !draftedNames.has(dn); };
+
+      // What positions do we still need?
+      const neededNow=getNeededPositions(roster);
+      const needsH=neededNow.hitter.length>0;
+      const needsSP=neededNow.sp>0;
+      const needsRP=neededNow.rp>0;
+
+      // Check if a team+decade combo has any player matching current needs
+      function poolHasNeeded(team, decade) {
+        return players.some(p => {
+          if (!notDrafted(p) || p.team!==team || p.decade!==decade) return false;
+          if (p.type==='pitcher') {
+            if (p.role==='SP' && needsSP) return true;
+            if (p.role==='RP' && needsRP) return true;
+            return false;
+          }
+          // hitter: check eligible positions against needed hitter slots
+          return needsH && p.eligiblePositions.some(pos=>neededNow.hitter.includes(pos));
+        });
+      }
+
+      // Normal spin or decade mode subsequent spins (team only, decade locked)
+      // Re-roll up to 50 times to find a team with eligible players for current needs
+      let attempts=0;
+      if(isDaily&&dailyRolls.length>0){
+        res=dailyRolls[dailyIdx]||randTeamDecade();setDailyIdx(i=>i+1);
+      } else {
+        do {
+          if(decadeMode && lockedDecade){
+            const teams=TEAMS_BY_DECADE[lockedDecade]||[];
+            const team=teams[Math.floor(Math.random()*teams.length)];
+            res={team,decade:lockedDecade};
+          } else {
+            res=randTeamDecade();
+          }
+          attempts++;
+        } while(attempts<50 && !poolHasNeeded(res.team, res.decade));
+      }
+
+      setSpinRes(res);setSpinning(false);setRerollMode(null);
 
       // STRICT filtering: only players who actually played for that team in that decade
       const strictPool=players.filter(p=>
@@ -7327,6 +7369,7 @@ export default function App(){
         <div style={{display:'flex',alignItems:'center',gap:12}}>
           <span style={{fontSize:18,fontWeight:900,color:'#f59e0b',letterSpacing:'-1px'}}>162-0</span>
           <span style={{fontSize:12,color:'#475569'}}>Round {roundNum} of 18</span>
+          <button onClick={()=>setShowRoster(s=>!s)} style={{fontSize:10,background:'rgba(245,158,11,0.1)',border:'1px solid rgba(245,158,11,0.3)',color:'#f59e0b',padding:'3px 10px',borderRadius:5,cursor:'pointer'}}>📋 {filled}/18</button>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           {salaryMode&&<span style={{fontSize:11,background:budgetLeft<0?'rgba(239,68,68,0.15)':'rgba(234,179,8,0.12)',border:`1px solid ${budgetLeft<0?'#dc2626':'rgba(234,179,8,0.4)'}`,color:budgetLeft<0?'#ef4444':'#eab308',padding:'4px 12px',borderRadius:5,fontWeight:800}}>💰 ${budgetLeft} left</span>}
@@ -7339,9 +7382,24 @@ export default function App(){
       </div>
       <div style={{height:2,background:'#060e1c'}}><div style={{height:'100%',background:'linear-gradient(90deg,#f59e0b,#fbbf24)',width:`${(filled/18)*100}%`,transition:'width .3s'}}/></div>
 
-      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
-        <RosterSidebar roster={roster} salaryMode={salaryMode} budgetSpent={budgetSpent} budgetLeft={budgetLeft}/>
-        <div style={{flex:1,padding:'20px 24px',overflowY:'auto',display:'flex',flexDirection:'column',alignItems:'center'}}>
+      <div style={{display:'flex',flex:1,overflow:'hidden',position:'relative'}}>
+        {/* Sidebar — hidden on mobile unless toggled */}
+        <div style={{display:'none'}} className="desktop-sidebar">
+          <RosterSidebar roster={roster} salaryMode={salaryMode} budgetSpent={budgetSpent} budgetLeft={budgetLeft}/>
+        </div>
+        {/* Mobile roster overlay */}
+        {showRoster&&(
+          <div onClick={()=>setShowRoster(false)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:50,display:'flex',alignItems:'flex-end'}}>
+            <div onClick={e=>e.stopPropagation()} style={{width:'100%',maxHeight:'80vh',overflowY:'auto',background:'rgba(4,10,20,0.98)',borderTop:'2px solid #1e3a5f',borderRadius:'16px 16px 0 0'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',borderBottom:'1px solid #0f1f35'}}>
+                <span style={{fontSize:11,letterSpacing:2,color:'#334155',fontWeight:700}}>ROSTER {filled}/18</span>
+                <button onClick={()=>setShowRoster(false)} style={{background:'none',border:'none',color:'#475569',fontSize:18,cursor:'pointer'}}>✕</button>
+              </div>
+              <RosterSidebar roster={roster} salaryMode={salaryMode} budgetSpent={budgetSpent} budgetLeft={budgetLeft}/>
+            </div>
+          </div>
+        )}
+        <div style={{flex:1,padding:'12px 16px',overflowY:'auto',display:'flex',flexDirection:'column',alignItems:'center'}}>
 
           {/* Still needed */}
           {needStr&&<div style={{fontSize:11,color:'#475569',marginBottom:16,background:'rgba(8,16,32,0.6)',padding:'7px 16px',borderRadius:16,border:'1px solid #0f1f35'}}>
@@ -7388,18 +7446,23 @@ export default function App(){
                   const hHeaders=['WAR/yr','AVG','OBP','SLG','HR','wRC+','BsR','dWAR'];
                   const pHeaders=['WAR/yr','ERA','FIP','WHIP','K/9','IP'];
                   const thStyle={padding:'6px 8px',textAlign:'right',fontSize:9,letterSpacing:1,color:'#334155',fontWeight:700};
-                  const secHead=(label,headers)=>(
+                  const isMobile=window.innerWidth<640;
+                  const mobileHHdrs=['WAR/yr','OBP','SLG','HR'];
+                  const mobilePHdrs=['WAR/yr','ERA','FIP'];
+                  const secHead=(label,headers)=>{
+                    const hdrs=isMobile?(label==='BATTERS'?mobileHHdrs:mobilePHdrs):headers;
+                    return(
                     <tr style={{borderBottom:'2px solid #1e3a5f',borderTop:'1px solid #0a1828'}}>
                       <th style={{padding:'8px 12px',textAlign:'left',fontSize:9,letterSpacing:2,color:'#475569',fontWeight:700}}>{label}</th>
                       <th style={{padding:'6px 8px',textAlign:'center',fontSize:9,letterSpacing:2,color:'#334155',fontWeight:700}}>POS</th>
                       {salaryMode&&<th style={{padding:'6px 8px',textAlign:'center',fontSize:9,letterSpacing:2,color:'#a16207',fontWeight:700}}>$</th>}
-                      {mode!=='blind'&&headers.map(h=>(
+                      {mode!=='blind'&&hdrs.map(h=>(
                         <th key={h} style={thStyle}>{h}</th>
                       ))}
-                      <th style={{padding:'6px 8px',width:80}}></th>
+                      <th style={{padding:'6px 8px',width:60}}></th>
                     </tr>
-                  );
-                  const cardProps={mode,onPick:pick,filledPositions:getFilledPositions(roster),neededPositions:needed,salaryMode,budgetLeft,slotsLeft,players,roster};
+                  );};
+                  const cardProps={mode,onPick:pick,filledPositions:getFilledPositions(roster),neededPositions:needed,salaryMode,budgetLeft,slotsLeft,players,roster,isMobile};
                   return(
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                       {hitters.length>0&&<>
@@ -7415,7 +7478,7 @@ export default function App(){
                 })()}
               </div>
               {/* Reroll buttons — 2 team rerolls + 2 decade rerolls per round */}
-              <div style={{display:'flex',gap:10,marginTop:16,flexWrap:'wrap',justifyContent:'center'}}>
+              <div style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap',justifyContent:'center',width:'100%',maxWidth:500}}>
                 <button
                   disabled={teamRerolls>=2}
                   onClick={()=>{
@@ -7434,7 +7497,12 @@ export default function App(){
                       const draftedIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
                       const draftedNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
                       const notDrafted=p=>{if(draftedIds.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !draftedNames.has(dn);};
-                      const strict=players.filter(p=>notDrafted(p)&&p.team===newTeam&&p.decade===dec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
+                      // Try to find a different team in this decade that has needed players
+                      const neededNow2=getNeededPositions(roster);
+                      const teams2=(TEAMS_BY_DECADE[dec]||[]).filter(t=>t!==spinRes.team);
+                      const eligible2=teams2.filter(t=>players.some(p=>notDrafted(p)&&p.team===t&&p.decade===dec&&(p.type==='pitcher'||(neededNow2.hitter.some(pos=>p.eligiblePositions.includes(pos))))));
+                      const finalTeam=(eligible2.length>0?eligible2:teams2)[Math.floor(Math.random()*(eligible2.length>0?eligible2:teams2).length)]||newTeam;
+                      const strict=players.filter(p=>notDrafted(p)&&p.team===finalTeam&&p.decade===dec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
                       const fallback=strict.length>0?strict:players.filter(p=>notDrafted(p)&&p.decade===dec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,8);
                       setPool(fallback);
                     },800);
