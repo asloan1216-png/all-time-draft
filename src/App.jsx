@@ -6699,7 +6699,6 @@ function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMo
   const hColsMobile=[
     {k:'WAR',v:player.avgWARperYear,good:player.avgWARperYear>=6},
     {k:'OBP', v:fmt3(s.obp), good:s.obp>=0.380},
-    {k:'SLG', v:fmt3(s.slg), good:s.slg>=0.500},
     {k:'HR',  v:s.hr,        good:s.hr>=30},
   ];
   // Pitcher stat columns
@@ -6726,7 +6725,7 @@ function PlayerCard({player,onPick,mode,filledPositions,neededPositions,salaryMo
       onMouseLeave={e=>{e.currentTarget.style.background='transparent';}}>
 
       {/* Name + team + decade */}
-      <td style={{padding:'10px 12px',minWidth:160}}>
+      <td style={{padding:'8px 8px',minWidth:120}}>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{fontSize:13,fontWeight:700,color:'#f1f5f9',whiteSpace:'nowrap'}}>{player.name}</span>
           {player.sampleNote&&<span style={{fontSize:9,background:'rgba(251,146,60,0.15)',border:'1px solid rgba(251,146,60,0.35)',color:'#fb923c',padding:'1px 4px',borderRadius:3,flexShrink:0}}>{player.sampleNote}</span>}
@@ -7369,7 +7368,7 @@ export default function App(){
         <div style={{display:'flex',alignItems:'center',gap:12}}>
           <span style={{fontSize:18,fontWeight:900,color:'#f59e0b',letterSpacing:'-1px'}}>162-0</span>
           <span style={{fontSize:12,color:'#475569'}}>Round {roundNum} of 18</span>
-          <button onClick={()=>setShowRoster(s=>!s)} style={{fontSize:10,background:'rgba(245,158,11,0.1)',border:'1px solid rgba(245,158,11,0.3)',color:'#f59e0b',padding:'3px 10px',borderRadius:5,cursor:'pointer'}}>📋 {filled}/18</button>
+          <button onClick={()=>setShowRoster(s=>!s)} style={{fontSize:12,fontWeight:800,background:showRoster?'rgba(245,158,11,0.25)':'rgba(245,158,11,0.15)',border:'2px solid #f59e0b',color:'#f59e0b',padding:'5px 12px',borderRadius:8,cursor:'pointer',letterSpacing:0.5}}>{showRoster?'✕ ROSTER':'📋 ROSTER '+filled+'/18'}</button>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           {salaryMode&&<span style={{fontSize:11,background:budgetLeft<0?'rgba(239,68,68,0.15)':'rgba(234,179,8,0.12)',border:`1px solid ${budgetLeft<0?'#dc2626':'rgba(234,179,8,0.4)'}`,color:budgetLeft<0?'#ef4444':'#eab308',padding:'4px 12px',borderRadius:5,fontWeight:800}}>💰 ${budgetLeft} left</span>}
@@ -7439,7 +7438,7 @@ export default function App(){
               {pool.every(p=>p.team!==spinRes?.team)&&(
                 <div style={{fontSize:11,color:'#475569',marginBottom:10,fontStyle:'italic'}}>No {spinRes?.team} players available — showing best from the {spinRes?.decade}</div>
               )}
-              <div style={{width:'100%',maxWidth:1000,marginTop:12,overflowX:'auto'}}>
+              <div style={{width:'100%',maxWidth:1000,marginTop:12,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
                 {(()=>{
                   const hitters=pool.filter(p=>p.type==='hitter').sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
                   const pitchers=pool.filter(p=>p.type==='pitcher').sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
@@ -7447,7 +7446,7 @@ export default function App(){
                   const pHeaders=['WAR/yr','ERA','FIP','WHIP','K/9','IP'];
                   const thStyle={padding:'6px 8px',textAlign:'right',fontSize:9,letterSpacing:1,color:'#334155',fontWeight:700};
                   const isMobile=window.innerWidth<640;
-                  const mobileHHdrs=['WAR/yr','OBP','SLG','HR'];
+                  const mobileHHdrs=['WAR/yr','OBP','HR'];
                   const mobilePHdrs=['WAR/yr','ERA','FIP'];
                   const secHead=(label,headers)=>{
                     const hdrs=isMobile?(label==='BATTERS'?mobileHHdrs:mobilePHdrs):headers;
