@@ -6616,13 +6616,16 @@ function SlotMachine({spinning,result,decadeMode,lockedDecade,rerollMode}){
         // Pre-lock: only spin decades
         ref.current=setInterval(()=>setDisp({team:'',decade:DECADES[Math.floor(Math.random()*DECADES.length)]}),80);
       } else if(rerollMode==='team'){
-        // Team reroll: keep current decade, only cycle teams
+        // Team reroll: freeze decade from result, only cycle teams
         const dec=result?.decade||disp.decade;
         const teams=TEAMS_BY_DECADE[dec]||[];
+        setDisp(d=>({...d,decade:dec})); // lock decade immediately
         ref.current=setInterval(()=>setDisp(d=>({team:teams[Math.floor(Math.random()*teams.length)],decade:dec})),80);
       } else if(rerollMode==='decade'){
-        // Decade reroll: keep current team visible, only cycle decades
-        ref.current=setInterval(()=>setDisp(d=>({team:d.team,decade:DECADES[Math.floor(Math.random()*DECADES.length)]})),80);
+        // Decade reroll: freeze team from result, only cycle decades
+        const frozenTeam=result?.team||disp.team;
+        setDisp(d=>({...d,team:frozenTeam})); // lock team immediately
+        ref.current=setInterval(()=>setDisp(d=>({team:frozenTeam,decade:DECADES[Math.floor(Math.random()*DECADES.length)]})),80);
       } else {
         ref.current=setInterval(()=>setDisp(randTeamDecade()),80);
       }
