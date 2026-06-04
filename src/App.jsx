@@ -7108,8 +7108,7 @@ export default function App(){
   const [dailyIdx,setDailyIdx]=useState(0);
   const [roundNum,setRoundNum]=useState(1);
   const [salaryMode,setSalaryMode]=useState(false);
-  const [teamRerolls,setTeamRerolls]=useState(0);    // how many times team has been rerolled
-  const [decadeRerolls,setDecadeRerolls]=useState(0); // how many times decade has been rerolled
+  const [rerollsUsed,setRerollsUsed]=useState(0); // total rerolls used (max 4 per round)
   const [lockedDecade,setLockedDecade]=useState(null); // for Decades mode — null until first spin locks it
   const [decadeMode,setDecadeMode]=useState(false);
   const [rerollMode,setRerollMode]=useState(null); // 'team' or 'decade' during reroll animation
@@ -7127,7 +7126,7 @@ export default function App(){
     setMode(m);setIsDaily(daily);setSalaryMode(salary);setDecadeMode(decMode);setLockedDecade(null);
     setRoster({});setSpinRes(null);setPool([]);
     setLineup(Array(9).fill(null));setRpRoles(['CL','SU','LR','LS']);setResult(null);setRoundNum(1);
-    setTeamRerolls(0);setDecadeRerolls(0);
+    setRerollsUsed(0);
     if(daily){
       let s=todaySeed();const rng=()=>{s=(s*9301+49297)%233280;return s/233280;};
       setDailyRolls(Array.from({length:60},()=>{const dec=DECADES[Math.floor(rng()*DECADES.length)];return{team:TEAMS_BY_DECADE[dec][Math.floor(rng()*TEAMS_BY_DECADE[dec].length)],decade:dec};}));
@@ -7266,7 +7265,7 @@ export default function App(){
     setResult(r);setScreen('results');
   }
 
-  function reset(){setScreen('home');setRoster({});setSpinRes(null);setPool([]);setResult(null);setRoundNum(1);setSalaryMode(false);setDecadeMode(false);setLockedDecade(null);setTeamRerolls(0);setDecadeRerolls(0);}
+  function reset(){setScreen('home');setRoster({});setSpinRes(null);setPool([]);setResult(null);setRoundNum(1);setSalaryMode(false);setDecadeMode(false);setLockedDecade(null);setRerollsUsed(0);}
 
   const appStyle={minHeight:'100vh',background:'linear-gradient(135deg,#060c18,#0a1220)',color:'#e2e8f0',fontFamily:'Georgia,"Times New Roman",serif',display:'flex',flexDirection:'column'};
   const headerStyle={display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 20px',background:'rgba(4,8,18,0.97)',borderBottom:'1px solid #0a1828',position:'sticky',top:0,zIndex:10};
