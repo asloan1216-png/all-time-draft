@@ -7252,7 +7252,6 @@ export default function App(){
       setScreen('lineup');
     } else {
       setSpinRes(null); setPool([]);
-      setTeamRerolls(0); setDecadeRerolls(0);
     }
   }
 
