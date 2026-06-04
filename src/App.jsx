@@ -6901,7 +6901,7 @@ function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onS
         {/* Batting Order */}
         <div>
           <div style={S.sh}>BATTING ORDER</div>
-          <div style={{fontSize:11,color:'#334155',marginBottom:10,fontStyle:'italic'}}>Drag to reorder · use arrows · tap × to remove</div>
+          <div style={{fontSize:11,color:'#334155',marginBottom:10,fontStyle:'italic'}}>Drag to reorder · use arrows to adjust order</div>
           {BATTING_ORDER_ROLES.map((role,i)=>{
             const p=lineup[i];
             return(
@@ -6921,7 +6921,7 @@ function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onS
                         disabled={i>=lineup.filter(Boolean).length-1}
                         style={{background:'none',border:'none',color:i>=lineup.filter(Boolean).length-1?'#1e3a5f':'#475569',cursor:i>=lineup.filter(Boolean).length-1?'default':'pointer',padding:'0 2px',fontSize:10,lineHeight:1}}>▼</button>
                     </div>
-                    <span onClick={e=>{e.stopPropagation();remove(i);}} style={{color:'#334155',cursor:'pointer',padding:'0 3px',fontSize:15,lineHeight:1}}>×</span>
+
                   </div>
                 ):(
                   <div style={{flex:1,fontSize:11,color:'#1e3a5f'}}>{role.hint}</div>
