@@ -6228,7 +6228,7 @@ function eraDiversityBonus(players) {
   return        { mult:0.975,        label:`⚠️ Only ${n} Era(s) — Diversity Penalty` };
 }
 
-function simulate(roster, lineup) {
+function simulate(roster, lineup, decadeMode=false) {
   const hitters = lineup.filter(Boolean);
   if (hitters.length < 9) return null;
 
@@ -7257,7 +7257,7 @@ export default function App(){
   }
 
   function runSim(){
-    const r=simulate(roster,lineup);
+    const r=simulate(roster,lineup,decadeMode);
     if(!r) return; // incomplete lineup guard
     if(salaryMode){ r.salaryMode=true; r.budgetSpent=budgetSpent; r.budgetTotal=SALARY_CAP_BUDGET; }
     setResult(r);setScreen('results');
