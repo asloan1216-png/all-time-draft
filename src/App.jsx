@@ -6035,7 +6035,7 @@ function playerPrice(p) {
 // get. Once real Fangraphs data is loaded — full of replacement-level players and
 // journeyman arms — this same budget forces genuine sacrifices: roster real scrubs to
 // afford your stars, and a poor draft yields a losing team. $390 is tuned to bite then.
-const SALARY_CAP_BUDGET = 390;
+const SALARY_CAP_BUDGET = 250;
 
 // ═══════════════════════════════════════════════════════════════
 // SIMULATION ENGINE  (v2 — grounded in real sabermetrics)
@@ -7444,7 +7444,7 @@ export default function App(){
                   const hHeaders=['WAR/yr','AVG','OBP','SLG','HR','wRC+','BsR','dWAR'];
                   const pHeaders=['WAR/yr','ERA','FIP','WHIP','K/9','IP'];
                   const thStyle={padding:'6px 8px',textAlign:'right',fontSize:9,letterSpacing:1,color:'#334155',fontWeight:700};
-                  const isMobile=window.innerWidth<640;
+                  const isMobile=window.innerWidth<700;
                   const mobileHHdrs=['WAR/yr','OBP','HR'];
                   const mobilePHdrs=['WAR/yr','ERA','FIP'];
                   const secHead=(label,headers)=>{
@@ -7481,25 +7481,22 @@ export default function App(){
                   disabled={teamRerolls>=2}
                   onClick={()=>{
                     if(teamRerolls>=2) return;
-                    // Keep same decade, roll a new team (use lockedDecade in decade mode)
                     const dec=lockedDecade||spinRes.decade;
-                    const teams=TEAMS_BY_DECADE[dec]||[];
-                    const otherTeams=teams.filter(t=>t!==spinRes.team);
-                    const newTeam=otherTeams[Math.floor(Math.random()*otherTeams.length)]||teams[0];
-                    const newRes={team:newTeam,decade:dec};
+                    // Pick the best team upfront before spinning
+                    const draftedIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
+                    const draftedNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
+                    const notDrafted=p=>{if(draftedIds.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !draftedNames.has(dn);};
+                    const neededNow2=getNeededPositions(roster);
+                    const otherTeams=(TEAMS_BY_DECADE[dec]||[]).filter(t=>t!==spinRes.team);
+                    const eligible2=otherTeams.filter(t=>players.some(p=>notDrafted(p)&&p.team===t&&p.decade===dec));
+                    const pool2=eligible2.length>0?eligible2:otherTeams;
+                    const finalTeam=pool2[Math.floor(Math.random()*pool2.length)]||spinRes.team;
+                    const finalRes={team:finalTeam,decade:dec};
                     setTeamRerolls(r=>r+1);
                     setPool([]);setRerollMode('team');
                     setSpinning(true);
                     setTimeout(()=>{
-                      setSpinRes(newRes);setSpinning(false);setRerollMode(null);
-                      const draftedIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
-                      const draftedNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
-                      const notDrafted=p=>{if(draftedIds.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !draftedNames.has(dn);};
-                      // Try to find a different team in this decade that has needed players
-                      const neededNow2=getNeededPositions(roster);
-                      const teams2=(TEAMS_BY_DECADE[dec]||[]).filter(t=>t!==spinRes.team);
-                      const eligible2=teams2.filter(t=>players.some(p=>notDrafted(p)&&p.team===t&&p.decade===dec&&(p.type==='pitcher'||(neededNow2.hitter.some(pos=>p.eligiblePositions.includes(pos))))));
-                      const finalTeam=(eligible2.length>0?eligible2:teams2)[Math.floor(Math.random()*(eligible2.length>0?eligible2:teams2).length)]||newTeam;
+                      setSpinRes(finalRes);setSpinning(false);setRerollMode(null);
                       const strict=players.filter(p=>notDrafted(p)&&p.team===finalTeam&&p.decade===dec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
                       const fallback=strict.length>0?strict:players.filter(p=>notDrafted(p)&&p.decade===dec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,8);
                       setPool(fallback);
@@ -7520,16 +7517,21 @@ export default function App(){
                     const teamsInDec=TEAMS_BY_DECADE[newDec]||[];
                     const newTeam=teamsInDec[Math.floor(Math.random()*teamsInDec.length)];
                     const newRes={team:newTeam,decade:newDec};
+                    // Pick team from new decade upfront before spinning
+                    const draftedIds2=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
+                    const draftedNames2=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
+                    const notDrafted2=p=>{if(draftedIds2.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !draftedNames2.has(dn);};
+                    const eligTeams2=(TEAMS_BY_DECADE[newDec]||[]).filter(t=>players.some(p=>notDrafted2(p)&&p.team===t&&p.decade===newDec));
+                    const allTeams2=TEAMS_BY_DECADE[newDec]||[];
+                    const finalTeam2=(eligTeams2.length>0?eligTeams2:allTeams2)[Math.floor(Math.random()*(eligTeams2.length>0?eligTeams2:allTeams2).length)]||newTeam;
+                    const finalRes2={team:finalTeam2,decade:newDec};
                     setDecadeRerolls(r=>r+1);
                     setPool([]);setRerollMode('decade');
                     setSpinning(true);
                     setTimeout(()=>{
-                      setSpinRes(newRes);setSpinning(false);setRerollMode(null);
-                      const draftedIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
-                      const draftedNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
-                      const notDrafted=p=>{if(draftedIds.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !draftedNames.has(dn);};
-                      const strict=players.filter(p=>notDrafted(p)&&p.team===newTeam&&p.decade===newDec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
-                      const fallback=strict.length>0?strict:players.filter(p=>notDrafted(p)&&p.decade===newDec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,8);
+                      setSpinRes(finalRes2);setSpinning(false);setRerollMode(null);
+                      const strict=players.filter(p=>notDrafted2(p)&&p.team===finalTeam2&&p.decade===newDec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
+                      const fallback=strict.length>0?strict:players.filter(p=>notDrafted2(p)&&p.decade===newDec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,8);
                       setPool(fallback);
                     },800);
                   }}
