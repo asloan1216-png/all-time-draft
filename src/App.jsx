@@ -6638,12 +6638,13 @@ function SlotMachine({spinning,result,decadeMode,lockedDecade,rerollMode}){
   // In decade mode after lock: only show the team spinning, decade is shown in header badge
   const teamOnly=decadeMode&&lockedDecade;
   const decadeOnly=decadeMode&&!lockedDecade;
+  const hideTeamDuringAnim=spinning&&rerollMode==='decade';
   return(
     <div style={{textAlign:'center',background:'rgba(6,12,24,0.95)',border:'2px solid #1e3a5f',borderRadius:16,padding:'16px 24px',width:'100%',maxWidth:360}}>
       <div style={{fontSize:9,letterSpacing:4,color:'#334155',marginBottom:10}}>SLOT MACHINE</div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
-        {!decadeOnly&&<div style={{fontSize:24,fontWeight:900,color:spinning?'#1e3a5f':'#f59e0b',transition:'color .15s',fontFamily:'Georgia,serif'}}>{disp.team||'???'}</div>}
-        {!teamOnly&&!decadeOnly&&<div style={{fontSize:18,color:'#0f1f35'}}>·</div>}
+        {!decadeOnly&&!hideTeamDuringAnim&&<div style={{fontSize:24,fontWeight:900,color:spinning?'#1e3a5f':'#f59e0b',transition:'color .15s',fontFamily:'Georgia,serif'}}>{disp.team||'???'}</div>}
+        {!teamOnly&&!decadeOnly&&!hideTeamDuringAnim&&<div style={{fontSize:18,color:'#0f1f35'}}>·</div>}
         {!teamOnly&&<div style={{fontSize:24,fontWeight:900,color:spinning?'#1e3a5f':'#60a5fa',transition:'color .15s',fontFamily:'Georgia,serif'}}>{disp.decade}</div>}
       </div>
       {!spinning&&result&&result.team&&<div style={{fontSize:11,color:'#475569',marginTop:10}}>Pick any player from this pool — you choose the position</div>}
