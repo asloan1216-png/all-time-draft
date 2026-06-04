@@ -7508,15 +7508,13 @@ export default function App(){
                   disabled={decadeRerolls>=2}
                   onClick={()=>{
                     if(decadeRerolls>=2) return;
-                    // Keep same team concept, roll a new decade (pick a decade where this team exists)
+                    // Roll a new decade only — keep the same team, freeze it in the animation
                     const currentDec=spinRes.decade;
                     const allDecs=DECADES.filter(d=>d!==currentDec&&(TEAMS_BY_DECADE[d]||[]).length>0);
                     const newDec=allDecs[Math.floor(Math.random()*allDecs.length)];
                     // Pick a team from that decade (may or may not be same franchise)
-                    const teamsInDec=TEAMS_BY_DECADE[newDec]||[];
-                    const newTeam=teamsInDec[Math.floor(Math.random()*teamsInDec.length)];
-                    const newRes={team:newTeam,decade:newDec};
-                    // Pick team from new decade upfront before spinning
+                    const teamsInNewDec=TEAMS_BY_DECADE[newDec]||[];
+                    const currentTeam=spinRes.team;
                     const draftedIds2=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
                     const draftedNames2=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
                     const notDrafted2=p=>{if(draftedIds2.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !draftedNames2.has(dn);};

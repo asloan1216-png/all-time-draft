@@ -3,8 +3,6 @@ import re
 with open('src/App.jsx','r', encoding='utf-8') as f:
     code = f.read()
 
-original = code
-
 fixes = {
     'Jazz Chisholm Jr.':  ['2B','CF','3B','SS','DH'],
     'Michael Harris II':  ['CF','LF','RF','DH'],
@@ -66,8 +64,24 @@ for name, correct_elig in fixes.items():
         fixed += 1
         print(f"Fixed: {name}")
 
+# Fix decade reroll to keep same team
+old_dec = "// Keep same team concept, roll a new decade (pick a decade where this team exists)"
+new_dec = "// Roll a new decade only — keep the same team, freeze it in the animation"
+if old_dec in code:
+    code = code.replace(old_dec, new_dec, 1)
+    # Also fix the team selection logic
+    old_team = """                    const teamsInDec=TEAMS_BY_DECADE[newDec]||[];
+                    const newTeam=teamsInDec[Math.floor(Math.random()*teamsInDec.length)];
+                    const newRes={team:newTeam,decade:newDec};
+                    // Pick team from new decade upfront before spinning"""
+    new_team = """                    const teamsInNewDec=TEAMS_BY_DECADE[newDec]||[];
+                    const currentTeam=spinRes.team;"""
+    if old_team in code:
+        code = code.replace(old_team, new_team, 1)
+        print("Fixed: decade reroll keeps same team")
+
 with open('src/App.jsx','w', encoding='utf-8') as f:
     f.write(code)
 
 print(f"\nTotal fixed: {fixed}")
-print("Done — now run: git add . && git commit -m 'fix player positions' && git push")
+print("Done — now run: git add . && git commit -m 'fix positions and decade reroll' && git push")
