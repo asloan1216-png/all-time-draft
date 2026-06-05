@@ -7195,7 +7195,14 @@ export default function App(){
             res=randTeamDecade();
           }
           attempts++;
-        } while(attempts<50 && !poolHasNeeded(res.team, res.decade));
+        } while(attempts<200 && !poolHasNeeded(res.team, res.decade));
+        // Exhaustive fallback: try every team+decade combo until one works
+        if(!poolHasNeeded(res.team, res.decade)){
+          const allCombos=[];
+          DECADES.forEach(dec=>(TEAMS_BY_DECADE[dec]||[]).forEach(team=>allCombos.push({team,decade:dec})));
+          const valid=allCombos.find(c=>poolHasNeeded(c.team,c.decade));
+          if(valid) res=valid;
+        }
       }
 
       setSpinRes(res);setSpinning(false);setRerollMode(null);
