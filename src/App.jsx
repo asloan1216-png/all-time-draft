@@ -7504,16 +7504,7 @@ export default function App(){
                       if(decadeMode&&lockedDecade){
                         const teams=TEAMS_BY_DECADE[lockedDecade]||[];
                         res={team:teams[Math.floor(Math.random()*teams.length)],decade:lockedDecade};
-                      } else {
-                        res=randTeamDecade();
-                        let att2=0;
-                        while(att2<200 && !poolHasNeeded(res.team,res.decade)){res=randTeamDecade();att2++;}
-                        if(!poolHasNeeded(res.team,res.decade)){
-                          const allC=[];DECADES.forEach(dec=>(TEAMS_BY_DECADE[dec]||[]).forEach(team=>allC.push({team,decade:dec})));
-                          const valid=allC.find(c=>poolHasNeeded(c.team,c.decade));
-                          if(valid)res=valid;
-                        }
-                      }
+                      } else res=randTeamDecade();
                       setSpinRes(res);setSpinning(false);
                       const dIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
                       const dNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
