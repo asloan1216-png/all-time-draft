@@ -47,7 +47,7 @@ const SAMPLE_PLAYERS = [
   {id:'chipper-jones-jr-2010s',name:"Chipper Jones Jr.",displayName:"Chipper Jones Jr.",team:'ATL',decade:'2010s',sampleNote:'',position:'RF',eligiblePositions:['3B','LF','DH'],type:'hitter',role:null,peakYears:[2008,2009,2010],avgWARperYear:4.0,stats:{avg:0.298,hr:17,obp:0.413,slg:0.477,wrcPlus:137,bsr:0.1,dwar:0.2}},
   {id:'javy-lopez-1990s',name:"Javy Lopez",displayName:"Javy Lopez",team:'ATL',decade:'1990s',sampleNote:'',position:'3B',eligiblePositions:['C','DH'],type:'hitter',role:null,peakYears:[1996,1997,1998],avgWARperYear:3.2,stats:{avg:0.287,hr:27,obp:0.337,slg:0.513,wrcPlus:118,bsr:-1.0,dwar:6.5}},
   {id:'javy-lopez-2000s',name:"Javy Lopez",displayName:"Javy Lopez",team:'BAL',decade:'2000s',sampleNote:'',position:'3B',eligiblePositions:['C','DH'],type:'hitter',role:null,peakYears:[2003,2004,2005],avgWARperYear:4.3,stats:{avg:0.308,hr:27,obp:0.356,slg:0.549,wrcPlus:134,bsr:-1.6,dwar:4.9}},
-  {id:'gary-sheffield-1990s',name:"Gary Sheffield",displayName:"Gary Sheffield",team:'LAD',decade:'1990s',sampleNote:'',position:'RF',eligiblePositions:['3B','SS','LF','RF','DH'],type:'hitter',role:null,peakYears:[1999,2000,2001],avgWARperYear:4.9,stats:{avg:0.312,hr:38,obp:0.421,slg:0.583,wrcPlus:158,bsr:-0.6,dwar:-16.7}},
+  {id:'gary-sheffield-1990s',name:"Gary Sheffield",displayName:"Gary Sheffield",team:'FLA',decade:'1990s',sampleNote:'',position:'RF',eligiblePositions:['3B','SS','LF','RF','DH'],type:'hitter',role:null,peakYears:[1995,1996,1997],avgWARperYear:3.8,stats:{avg:0.296,hr:26,obp:0.452,slg:0.552,wrcPlus:166,bsr:0.0,dwar:-1.8}},
   {id:'gary-sheffield-2000s',name:"Gary Sheffield",displayName:"Gary Sheffield",team:'ATL',decade:'2000s',sampleNote:'',position:'RF',eligiblePositions:['3B','SS','LF','RF','DH'],type:'hitter',role:null,peakYears:[2001,2002,2003],avgWARperYear:5.6,stats:{avg:0.316,hr:33,obp:0.413,slg:0.566,wrcPlus:155,bsr:1.8,dwar:-10.5}},
   {id:'bj-surhoff-1990s',name:"B.J. Surhoff",displayName:"B.J. Surhoff",team:'BAL',decade:'1990s',sampleNote:'',position:'LF',eligiblePositions:['LF','CF','RF','DH'],type:'hitter',role:null,peakYears:[1995,1996,1997],avgWARperYear:3.1,stats:{avg:0.299,hr:17,obp:0.358,slg:0.477,wrcPlus:112,bsr:-0.3,dwar:4.8}},
   {id:'bj-surhoff-2000s',name:"B.J. Surhoff",displayName:"B.J. Surhoff",team:'- - -',decade:'2000s',sampleNote:'',position:'LF',eligiblePositions:['LF','CF','RF','DH'],type:'hitter',role:null,peakYears:[1998,1999,2000],avgWARperYear:2.8,stats:{avg:0.293,hr:21,obp:0.341,slg:0.464,wrcPlus:106,bsr:0.2,dwar:0.4}},
@@ -2489,7 +2489,7 @@ const SAMPLE_PLAYERS = [
   {id:'andy-ashby-1990s-sp',name:"Andy Ashby",displayName:"Andy Ashby",team:'SDP',decade:'1990s',sampleNote:'',position:'SP',eligiblePositions:['SP'],type:'pitcher',role:'SP',peakYears:[1997,1998,1999],avgWARperYear:3.2,stats:{era:3.75,fip:3.98,k9:6.1,whip:0.8,ip:211,war:3.2,war9:0.14}},
   {id:'andy-ashby-2000s-sp',name:"Andy Ashby",displayName:"Andy Ashby",team:'- - -',decade:'2000s',sampleNote:'',position:'SP',eligiblePositions:['SP'],type:'pitcher',role:'SP',peakYears:[1998,1999,2000],avgWARperYear:2.6,stats:{era:4.02,fip:4.45,k9:5.5,whip:0.8,ip:210,war:2.6,war9:0.11}},
   {id:'kevin-brown-1980s-sp',name:"Kevin Brown",displayName:"Kevin Brown",team:'TEX',decade:'1980s',sampleNote:'',position:'SP',eligiblePositions:['SP'],type:'pitcher',role:'SP',peakYears:[1989,1990,1991],avgWARperYear:2.3,stats:{era:3.78,fip:3.93,k9:4.5,whip:0.81,ip:194,war:2.3,war9:0.11}},
-  {id:'kevin-brown-1990s-sp',name:"Kevin Brown",displayName:"Kevin Brown",team:'SDP',decade:'1990s',sampleNote:'',position:'SP',eligiblePositions:['SP'],type:'pitcher',role:'SP',peakYears:[1998,1999,2000],avgWARperYear:7.9,stats:{era:2.65,fip:2.85,k9:8.4,whip:0.8,ip:246,war:7.9,war9:0.29}},
+  {id:'kevin-brown-1990s-sp',name:"Kevin Brown",displayName:"Kevin Brown",team:'FLA',decade:'1990s',sampleNote:'2yr',position:'SP',eligiblePositions:['SP'],type:'pitcher',role:'SP',peakYears:[1996,1997],avgWARperYear:6.1,stats:{era:2.29,fip:2.91,k9:6.96,whip:1.1,ip:235.05,war:6.61,war9:0.2}},
   {id:'kevin-brown-2000s-sp',name:"Kevin Brown",displayName:"Kevin Brown",team:'LAD',decade:'2000s',sampleNote:'',position:'SP',eligiblePositions:['SP'],type:'pitcher',role:'SP',peakYears:[1998,1999,2000],avgWARperYear:7.9,stats:{era:2.65,fip:2.85,k9:8.4,whip:0.8,ip:246,war:7.9,war9:0.29}},
   {id:'giovanni-carrara-2000s-rp',name:"Giovanni Carrara",displayName:"Giovanni Carrara",team:'LAD',decade:'2000s',sampleNote:'',position:'RP',eligiblePositions:['RP'],type:'pitcher',role:'RP',peakYears:[2001,2002,2004],avgWARperYear:0.5,stats:{era:2.87,fip:3.93,k9:7.0,whip:0.8,ip:76,war:0.5,war9:0.06}},
   {id:'omar-daal-1990s-sp',name:"Omar Daal",displayName:"Omar Daal",team:'ARI',decade:'1990s',sampleNote:'',position:'SP',eligiblePositions:['SP'],type:'pitcher',role:'SP',peakYears:[1998,1999,2000],avgWARperYear:2.6,stats:{era:4.22,fip:4.39,k9:6.2,whip:0.85,ip:181,war:2.6,war9:0.13}},
@@ -6945,6 +6945,22 @@ function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onS
               <span style={{flex:1,fontSize:13,fontWeight:600,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{sp.name}</span>
               <span style={{fontSize:10,color:'#475569',flexShrink:0}}>{sp.decade}</span>
               <span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{sp.stats?.era} ERA</span>
+              <div style={{display:'flex',flexDirection:'column',gap:2,flexShrink:0}}>
+                <button onClick={()=>{
+                  if(i===0) return;
+                  const k=Object.keys(roster).filter(k=>roster[k]?.role==='SP');
+                  const newRoster={...roster};
+                  const tmp=newRoster[k[i]]; newRoster[k[i]]=newRoster[k[i-1]]; newRoster[k[i-1]]=tmp;
+                  setRoster(newRoster);
+                }} disabled={i===0} style={{background:'none',border:'none',cursor:i===0?'default':'pointer',color:i===0?'#1e3a5f':'#60a5fa',fontSize:12,lineHeight:1,padding:'1px 4px'}}>▲</button>
+                <button onClick={()=>{
+                  if(i===starters.length-1) return;
+                  const k=Object.keys(roster).filter(k=>roster[k]?.role==='SP');
+                  const newRoster={...roster};
+                  const tmp=newRoster[k[i]]; newRoster[k[i]]=newRoster[k[i+1]]; newRoster[k[i+1]]=tmp;
+                  setRoster(newRoster);
+                }} disabled={i===starters.length-1} style={{background:'none',border:'none',cursor:i===starters.length-1?'default':'pointer',color:i===starters.length-1?'#1e3a5f':'#60a5fa',fontSize:12,lineHeight:1,padding:'1px 4px'}}>▼</button>
+              </div>
             </div>
           ))}
           <div style={{...S.sh,marginTop:18}}>BULLPEN ROLES</div>
@@ -7477,67 +7493,33 @@ export default function App(){
                   );
                 })()}
               </div>
-              {/* Reroll buttons — 2 team rerolls + 2 decade rerolls per round */}
-              <div style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap',justifyContent:'center',width:'100%',maxWidth:500}}>
+              {/* Single reroll button — 4 uses per round */}
+              <div style={{display:'flex',gap:8,marginTop:12,justifyContent:'center',width:'100%',maxWidth:500}}>
                 <button
-                  disabled={teamRerolls>=2}
+                  disabled={rerollsUsed>=4}
                   onClick={()=>{
-                    if(teamRerolls>=2) return;
-                    const dec=lockedDecade||spinRes.decade;
-                    // Pick the best team upfront before spinning
-                    const draftedIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
-                    const draftedNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
-                    const notDrafted=p=>{if(draftedIds.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !draftedNames.has(dn);};
-                    const neededNow2=getNeededPositions(roster);
-                    const otherTeams=(TEAMS_BY_DECADE[dec]||[]).filter(t=>t!==spinRes.team);
-                    const eligible2=otherTeams.filter(t=>players.some(p=>notDrafted(p)&&p.team===t&&p.decade===dec));
-                    const pool2=eligible2.length>0?eligible2:otherTeams;
-                    const finalTeam=pool2[Math.floor(Math.random()*pool2.length)]||spinRes.team;
-                    const finalRes={team:finalTeam,decade:dec};
-                    setTeamRerolls(r=>r+1);
-                    setPool([]);setRerollMode('team');
+                    if(rerollsUsed>=4) return;
+                    setRerollsUsed(r=>r+1);
+                    setPool([]);
                     setSpinning(true);
                     setTimeout(()=>{
-                      setSpinRes(finalRes);setSpinning(false);setRerollMode(null);
-                      const strict=players.filter(p=>notDrafted(p)&&p.team===finalTeam&&p.decade===dec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
-                      const fallback=strict.length>0?strict:players.filter(p=>notDrafted(p)&&p.decade===dec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,8);
+                      let res;
+                      if(decadeMode&&lockedDecade){
+                        const teams=TEAMS_BY_DECADE[lockedDecade]||[];
+                        res={team:teams[Math.floor(Math.random()*teams.length)],decade:lockedDecade};
+                      } else res=randTeamDecade();
+                      setSpinRes(res);setSpinning(false);
+                      const dIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
+                      const dNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
+                      const notD=p=>{if(dIds.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !dNames.has(dn);};
+                      const strict=players.filter(p=>notD(p)&&p.team===res.team&&p.decade===res.decade).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
+                      const fallback=strict.length>0?strict:players.filter(p=>notD(p)&&p.decade===res.decade).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,8);
                       setPool(fallback);
-                    },800);
+                    },1600);
                   }}
-                  style={{background:teamRerolls>=2?'rgba(30,42,58,0.4)':'rgba(245,158,11,0.06)',border:`1px solid ${teamRerolls>=2?'#0f1f35':'rgba(245,158,11,0.3)'}`,color:teamRerolls>=2?'#1e3a5f':'#f59e0b',borderRadius:8,padding:'8px 18px',cursor:teamRerolls>=2?'not-allowed':'pointer',fontSize:12,fontWeight:700,transition:'all .15s'}}>
-                  🔄 New Team {teamRerolls>=2?'(used)':teamRerolls>0?`(${2-teamRerolls} left)`:'(2 left)'}
+                  style={{background:rerollsUsed>=4?'rgba(30,42,58,0.4)':'rgba(245,158,11,0.06)',border:`1px solid ${rerollsUsed>=4?'#0f1f35':'rgba(245,158,11,0.3)'}`,color:rerollsUsed>=4?'#1e3a5f':'#f59e0b',borderRadius:8,padding:'8px 22px',cursor:rerollsUsed>=4?'not-allowed':'pointer',fontSize:12,fontWeight:700,transition:'all .15s'}}>
+                  🎰 Spin Again {rerollsUsed>=4?'(used)':`(${4-rerollsUsed} left)`}
                 </button>
-                {!decadeMode&&<button
-                  disabled={decadeRerolls>=2}
-                  onClick={()=>{
-                    if(decadeRerolls>=2) return;
-                    // Roll a new decade only — keep the same team, freeze it in the animation
-                    const currentDec=spinRes.decade;
-                    const allDecs=DECADES.filter(d=>d!==currentDec&&(TEAMS_BY_DECADE[d]||[]).length>0);
-                    const newDec=allDecs[Math.floor(Math.random()*allDecs.length)];
-                    // Pick a team from that decade (may or may not be same franchise)
-                    const teamsInNewDec=TEAMS_BY_DECADE[newDec]||[];
-                    const currentTeam=spinRes.team;
-                    const draftedIds2=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
-                    const draftedNames2=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
-                    const notDrafted2=p=>{if(draftedIds2.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !draftedNames2.has(dn);};
-                    const eligTeams2=(TEAMS_BY_DECADE[newDec]||[]).filter(t=>players.some(p=>notDrafted2(p)&&p.team===t&&p.decade===newDec));
-                    const allTeams2=TEAMS_BY_DECADE[newDec]||[];
-                    const finalTeam2=(eligTeams2.length>0?eligTeams2:allTeams2)[Math.floor(Math.random()*(eligTeams2.length>0?eligTeams2:allTeams2).length)]||newTeam;
-                    const finalRes2={team:finalTeam2,decade:newDec};
-                    setDecadeRerolls(r=>r+1);
-                    setPool([]);setRerollMode('decade');
-                    setSpinning(true);
-                    setTimeout(()=>{
-                      setSpinRes(finalRes2);setSpinning(false);setRerollMode(null);
-                      const strict=players.filter(p=>notDrafted2(p)&&p.team===finalTeam2&&p.decade===newDec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
-                      const fallback=strict.length>0?strict:players.filter(p=>notDrafted2(p)&&p.decade===newDec).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,8);
-                      setPool(fallback);
-                    },800);
-                  }}
-                  style={{background:decadeRerolls>=2?'rgba(30,42,58,0.4)':'rgba(96,165,250,0.06)',border:`1px solid ${decadeRerolls>=2?'#0f1f35':'rgba(96,165,250,0.3)'}`,color:decadeRerolls>=2?'#1e3a5f':'#60a5fa',borderRadius:8,padding:'8px 18px',cursor:decadeRerolls>=2?'not-allowed':'pointer',fontSize:12,fontWeight:700,transition:'all .15s'}}>
-                  📅 New Decade {decadeRerolls>=2?'(used)':decadeRerolls>0?`(${2-decadeRerolls} left)`:'(2 left)'}
-                </button>}
               </div>
             </>
           )}
