@@ -6883,7 +6883,8 @@ function RosterSidebar({roster,salaryMode,budgetSpent,budgetLeft}){
 // ═══════════════════════════════════════════════════════════════
 function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onSimulate,spOrder=[0,1,2,3,4],onSpOrderChange}){
   const hitters=Object.values(roster).filter(p=>p&&p.type==='hitter');
-  const starters=Object.values(roster).filter(p=>p&&p.role==='SP');
+  const allSPs=Object.values(roster).filter(p=>p&&p.role==='SP');
+  const starters=spOrder.slice(0,allSPs.length).map(i=>allSPs[i]).filter(Boolean);
   const relievers=Object.values(roster).filter(p=>p&&p.role==='RP');
   const feedback=getLineupFeedback(lineup);
   const [drag,setDrag]=useState(null);
