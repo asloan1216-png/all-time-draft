@@ -1,32 +1,69 @@
-import re
-
 with open('src/App.jsx', 'r', encoding='utf-8') as f:
     code = f.read()
 
-# Find the full starters.map block by position
-start = code.find('starters.map((sp,i)=>(')
-end = code.find('))}', start) + 3
-old_block = code[start:end]
-print("Found block, length:", len(old_block))
-print("Last 100 chars:", repr(old_block[-100:]))
+fixes = 0
 
-new_block = """starters.map((sp,i)=>(
-            <div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'rgba(8,16,32,0.7)',border:'1px solid #0f1f35',borderRadius:10,padding:'8px 10px',marginBottom:6}}>
-              <span style={{fontSize:13,fontWeight:700,color:'#60a5fa',width:28,flexShrink:0}}>SP{i+1}</span>
-              <span style={{flex:1,fontSize:13,fontWeight:600,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{sp.name}</span>
-              <span style={{fontSize:10,color:'#475569',flexShrink:0}}>{sp.decade}</span>
-              <span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{sp.stats?.era} ERA</span>
-              <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0}}>
-                <button onClick={()=>{if(i===0)return;const spKeys=['sp1','sp2','sp3','sp4','sp5'].filter(k=>roster[k]);const a=spKeys[i-1],b=spKeys[i];const nr={...roster};const tmp=nr[a];nr[a]=nr[b];nr[b]=tmp;onRosterChange(nr);}} disabled={i===0} style={{background:'none',border:'none',cursor:i===0?'default':'pointer',color:i===0?'#1e3a5f':'#60a5fa',fontSize:11,lineHeight:1,padding:'1px 3px'}}>▲</button>
-                <button onClick={()=>{if(i===starters.length-1)return;const spKeys=['sp1','sp2','sp3','sp4','sp5'].filter(k=>roster[k]);const a=spKeys[i],b=spKeys[i+1];const nr={...roster};const tmp=nr[a];nr[a]=nr[b];nr[b]=tmp;onRosterChange(nr);}} disabled={i===starters.length-1} style={{background:'none',border:'none',cursor:i===starters.length-1?'default':'pointer',color:i===starters.length-1?'#1e3a5f':'#60a5fa',fontSize:11,lineHeight:1,padding:'1px 3px'}}>▼</button>
-              </div>
-            </div>
-          ))})"""
+# Fix 1: Increase retry attempts and use exhaustive search as final fallback
+old_retry = """      do {
+        res = randTeamDecade();
+        attempts++;
+      } while (attempts<50 && !poolHasNeeded(res.team, res.decade));"""
 
-code = code[:start] + new_block + code[end:]
-print("Replaced!")
+new_retry = """      // Try random spins first
+      do {
+        res = randTeamDecade();
+        attempts++;
+      } while (attempts<200 && !poolHasNeeded(res.team, res.decade));
+      // If still not found, exhaustively search ALL team+decade combos
+      if (!poolHasNeeded(res.team, res.decade)) {
+        const allCombos = [];
+        DECADES.forEach(dec => (TEAMS_BY_DECADE[dec]||[]).forEach(team => allCombos.push({team,decade:dec})));
+        const validCombo = allCombos.find(c => poolHasNeeded(c.team, c.decade));
+        if (validCombo) res = validCombo;
+      }"""
+
+if old_retry in code:
+    code = code.replace(old_retry, new_retry, 1)
+    print("Fix 1: exhaustive search fallback added")
+    fixes += 1
+else:
+    print("Fix 1: not matched")
+
+# Fix 2: Same for the reroll button spin
+old_reroll_spin = """                    setTimeout(()=>{
+                      let res;
+                      if(decadeMode&&lockedDecade){
+                        const teams=TEAMS_BY_DECADE[lockedDecade]||[];
+                        res={team:teams[Math.floor(Math.random()*teams.length)],decade:lockedDecade};
+                      } else res=randTeamDecade();
+                      setSpinRes(res);setSpinning(false);"""
+
+new_reroll_spin = """                    setTimeout(()=>{
+                      let res;
+                      if(decadeMode&&lockedDecade){
+                        const teams=TEAMS_BY_DECADE[lockedDecade]||[];
+                        res={team:teams[Math.floor(Math.random()*teams.length)],decade:lockedDecade};
+                      } else {
+                        res=randTeamDecade();
+                        let att2=0;
+                        while(att2<200 && !poolHasNeeded(res.team,res.decade)){res=randTeamDecade();att2++;}
+                        if(!poolHasNeeded(res.team,res.decade)){
+                          const allC=[];DECADES.forEach(dec=>(TEAMS_BY_DECADE[dec]||[]).forEach(team=>allC.push({team,decade:dec})));
+                          const valid=allC.find(c=>poolHasNeeded(c.team,c.decade));
+                          if(valid)res=valid;
+                        }
+                      }
+                      setSpinRes(res);setSpinning(false);"""
+
+if old_reroll_spin in code:
+    code = code.replace(old_reroll_spin, new_reroll_spin, 1)
+    print("Fix 2: reroll button also uses exhaustive search")
+    fixes += 1
+else:
+    print("Fix 2: not matched")
 
 with open('src/App.jsx', 'w', encoding='utf-8') as f:
     f.write(code)
 
-print("Done — run: git add . && git commit -m 'fix SP arrows direct swap' && git push")
+print(f"\nTotal fixes: {fixes}")
+print("Done — run: git add . && git commit -m 'fix stuck spin exhaustive search' && git push")
