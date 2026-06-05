@@ -6881,7 +6881,7 @@ function RosterSidebar({roster,salaryMode,budgetSpent,budgetLeft}){
 // ═══════════════════════════════════════════════════════════════
 // LINEUP BUILDER
 // ═══════════════════════════════════════════════════════════════
-function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onSimulate}){
+function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onSimulate,spOrder=[0,1,2,3,4],onSpOrderChange}){
   const hitters=Object.values(roster).filter(p=>p&&p.type==='hitter');
   const starters=Object.values(roster).filter(p=>p&&p.role==='SP');
   const relievers=Object.values(roster).filter(p=>p&&p.role==='RP');
@@ -7118,6 +7118,7 @@ export default function App(){
   const [spinRes,setSpinRes]=useState(null);
   const [pool,setPool]=useState([]);
   const [lineup,setLineup]=useState(Array(9).fill(null));
+  const [spOrder,setSpOrder]=useState([0,1,2,3,4]);
   const [rpRoles,setRpRoles]=useState(['CL','SU','LR','LS']);
   const [result,setResult]=useState(null);
   const [dailyRolls,setDailyRolls]=useState([]);
@@ -7141,7 +7142,7 @@ export default function App(){
   function startGame(m,daily=false,salary=false,decMode=false){
     setMode(m);setIsDaily(daily);setSalaryMode(salary);setDecadeMode(decMode);setLockedDecade(null);
     setRoster({});setSpinRes(null);setPool([]);
-    setLineup(Array(9).fill(null));setRpRoles(['CL','SU','LR','LS']);setResult(null);setRoundNum(1);
+    setLineup(Array(9).fill(null)); setSpOrder([0,1,2,3,4]);setRpRoles(['CL','SU','LR','LS']);setResult(null);setRoundNum(1);
     setRerollsUsed(0);
     if(daily){
       let s=todaySeed();const rng=()=>{s=(s*9301+49297)%233280;return s/233280;};
@@ -7368,7 +7369,7 @@ export default function App(){
           <button onClick={reset} style={{fontSize:10,background:'transparent',border:'1px solid #1e293b',color:'#475569',padding:'3px 10px',borderRadius:5,cursor:'pointer'}}>✕ Quit</button>
         </div>
       </div>
-      <LineupBuilder roster={roster} lineup={lineup} onLineupChange={setLineup} rpRoles={rpRoles} onRpRolesChange={setRpRoles} onSimulate={runSim}/>
+      <LineupBuilder roster={roster} lineup={lineup} onLineupChange={setLineup} rpRoles={rpRoles} onRpRolesChange={setRpRoles} onSimulate={runSim} spOrder={spOrder} onSpOrderChange={setSpOrder}/>
     </div>
   );
 
