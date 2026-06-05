@@ -6987,7 +6987,7 @@ function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onS
 // ═══════════════════════════════════════════════════════════════
 // RESULTS
 // ═══════════════════════════════════════════════════════════════
-function ResultsScreen({result,onReset,onShare}){
+function ResultsScreen({result,roster,lineup,onReset,onShare}){
   const [anim,setAnim]=useState(0);const[show,setShow]=useState(false);
   useEffect(()=>{
     let n=0;const t=result.wins;
@@ -7037,6 +7037,35 @@ function ResultsScreen({result,onReset,onShare}){
                 ))}
               </div>
             )}
+          </div>
+        )}
+        {show&&roster&&(
+          <div style={{marginTop:4,marginBottom:24,textAlign:'left'}}>
+            <div style={{fontSize:9,letterSpacing:4,color:'#334155',marginBottom:12,textAlign:'center'}}>YOUR ROSTER</div>
+            <div style={{fontSize:10,letterSpacing:3,color:'#1e3a5f',marginBottom:6}}>LINEUP</div>
+            {lineup&&lineup.filter(Boolean).map((p,i)=>(
+              <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #080f1e',fontSize:12,gap:8}}>
+                <span style={{color:'#475569',width:28,flexShrink:0}}>{p.assignedPos||p.position}</span>
+                <span style={{color:'#e2e8f0',flex:1}}>{p.displayName||p.name}</span>
+                <span style={{color:'#334155',fontSize:10}}>{p.team} · {p.decade}</span>
+              </div>
+            ))}
+            <div style={{fontSize:10,letterSpacing:3,color:'#1e3a5f',marginBottom:6,marginTop:12}}>ROTATION</div>
+            {roster&&['sp1','sp2','sp3','sp4','sp5'].filter(k=>roster[k]).map((k,i)=>{const p=roster[k];return(
+              <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #080f1e',fontSize:12,gap:8}}>
+                <span style={{color:'#60a5fa',width:28,flexShrink:0}}>SP{i+1}</span>
+                <span style={{color:'#e2e8f0',flex:1}}>{p.displayName||p.name}</span>
+                <span style={{color:'#334155',fontSize:10}}>{p.team} · {p.decade}</span>
+              </div>
+            );})}
+            <div style={{fontSize:10,letterSpacing:3,color:'#1e3a5f',marginBottom:6,marginTop:12}}>BULLPEN</div>
+            {roster&&['rp1','rp2','rp3','rp4'].filter(k=>roster[k]).map((k,i)=>{const p=roster[k];return(
+              <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #080f1e',fontSize:12,gap:8}}>
+                <span style={{color:'#a78bfa',width:28,flexShrink:0}}>{p.assignedPos||'RP'}</span>
+                <span style={{color:'#e2e8f0',flex:1}}>{p.displayName||p.name}</span>
+                <span style={{color:'#334155',fontSize:10}}>{p.team} · {p.decade}</span>
+              </div>
+            );})}
           </div>
         )}
         <div style={{display:'flex',gap:10}}>
@@ -7350,7 +7379,7 @@ export default function App(){
     </div>
   );
 
-  if(screen==='results'&&result) return <ResultsScreen result={result} onReset={reset} onShare={()=>navigator.clipboard?.writeText(`All-Time Draft\n${result.wins}-${result.losses} | ${result.benchmark?.label}`).catch(()=>{})}/>;
+  if(screen==='results'&&result) return <ResultsScreen result={result} roster={roster} lineup={lineup} onReset={reset} onShare={()=>navigator.clipboard?.writeText(`All-Time Draft\n${result.wins}-${result.losses} | ${result.benchmark?.label}`).catch(()=>{})}/>;
 
   // LINEUP
   if(screen==='lineup') return(
