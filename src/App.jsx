@@ -6946,24 +6946,12 @@ function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onS
               <span style={{flex:1,fontSize:13,fontWeight:600,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{sp.name}</span>
               <span style={{fontSize:10,color:'#475569',flexShrink:0}}>{sp.decade}</span>
               <span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{sp.stats?.era} ERA</span>
-              <div style={{display:'flex',flexDirection:'column',gap:2,flexShrink:0}}>
-                <button onClick={()=>{
-                  if(i===0) return;
-                  const k=Object.keys(roster).filter(k=>roster[k]?.role==='SP');
-                  const newRoster={...roster};
-                  const tmp=newRoster[k[i]]; newRoster[k[i]]=newRoster[k[i-1]]; newRoster[k[i-1]]=tmp;
-                  setRoster(newRoster);
-                }} disabled={i===0} style={{background:'none',border:'none',cursor:i===0?'default':'pointer',color:i===0?'#1e3a5f':'#60a5fa',fontSize:12,lineHeight:1,padding:'1px 4px'}}>▲</button>
-                <button onClick={()=>{
-                  if(i===starters.length-1) return;
-                  const k=Object.keys(roster).filter(k=>roster[k]?.role==='SP');
-                  const newRoster={...roster};
-                  const tmp=newRoster[k[i]]; newRoster[k[i]]=newRoster[k[i+1]]; newRoster[k[i+1]]=tmp;
-                  setRoster(newRoster);
-                }} disabled={i===starters.length-1} style={{background:'none',border:'none',cursor:i===starters.length-1?'default':'pointer',color:i===starters.length-1?'#1e3a5f':'#60a5fa',fontSize:12,lineHeight:1,padding:'1px 4px'}}>▼</button>
+              <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0}}>
+                <button onClick={()=>{if(i===0)return;const spKeys=['sp1','sp2','sp3','sp4','sp5'].filter(k=>roster[k]);const a=spKeys[i-1],b=spKeys[i];const nr={...roster};const tmp=nr[a];nr[a]=nr[b];nr[b]=tmp;onRosterChange(nr);}} disabled={i===0} style={{background:'none',border:'none',cursor:i===0?'default':'pointer',color:i===0?'#1e3a5f':'#60a5fa',fontSize:11,lineHeight:1,padding:'1px 3px'}}>▲</button>
+                <button onClick={()=>{if(i===starters.length-1)return;const spKeys=['sp1','sp2','sp3','sp4','sp5'].filter(k=>roster[k]);const a=spKeys[i],b=spKeys[i+1];const nr={...roster};const tmp=nr[a];nr[a]=nr[b];nr[b]=tmp;onRosterChange(nr);}} disabled={i===starters.length-1} style={{background:'none',border:'none',cursor:i===starters.length-1?'default':'pointer',color:i===starters.length-1?'#1e3a5f':'#60a5fa',fontSize:11,lineHeight:1,padding:'1px 3px'}}>▼</button>
               </div>
             </div>
-          ))}
+          ))})
           <div style={{...S.sh,marginTop:18}}>BULLPEN ROLES</div>
           <div style={{fontSize:11,color:'#334155',marginBottom:10,fontStyle:'italic'}}>Assign roles to relievers</div>
           {relievers.map((rp,i)=>(
