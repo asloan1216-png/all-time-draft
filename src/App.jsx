@@ -6232,8 +6232,8 @@ function simulate(roster, lineup, decadeMode=false) {
   const hitters = lineup.filter(Boolean);
   if (hitters.length < 9) return null;
 
-  const starters  = Object.entries(roster).filter(([k])=>k.startsWith('SP')).map(([,v])=>v).filter(Boolean);
-  const relievers = Object.entries(roster).filter(([k])=>k.startsWith('RP')).map(([,v])=>v).filter(Boolean);
+  const starters  = Object.entries(roster).filter(([k])=>k.toLowerCase().startsWith('sp')).map(([,v])=>v).filter(Boolean);
+  const relievers = Object.entries(roster).filter(([k])=>k.toLowerCase().startsWith('rp')).map(([,v])=>v).filter(Boolean);
   const allPlayers = Object.values(roster).filter(Boolean);
 
   // Offense
