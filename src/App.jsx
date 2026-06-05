@@ -6881,7 +6881,7 @@ function RosterSidebar({roster,salaryMode,budgetSpent,budgetLeft}){
 // ═══════════════════════════════════════════════════════════════
 // LINEUP BUILDER
 // ═══════════════════════════════════════════════════════════════
-function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onSimulate,spOrder=[0,1,2,3,4],onSpOrderChange}){
+function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onSimulate,onRosterChange,spOrder=[0,1,2,3,4],onSpOrderChange}){
   const hitters=Object.values(roster).filter(p=>p&&p.type==='hitter');
   const allSPs=Object.values(roster).filter(p=>p&&p.role==='SP');
   const starters=spOrder.slice(0,allSPs.length).map(i=>allSPs[i]).filter(Boolean);
@@ -7370,7 +7370,7 @@ export default function App(){
           <button onClick={reset} style={{fontSize:10,background:'transparent',border:'1px solid #1e293b',color:'#475569',padding:'3px 10px',borderRadius:5,cursor:'pointer'}}>✕ Quit</button>
         </div>
       </div>
-      <LineupBuilder roster={roster} lineup={lineup} onLineupChange={setLineup} rpRoles={rpRoles} onRpRolesChange={setRpRoles} onSimulate={runSim} spOrder={spOrder} onSpOrderChange={setSpOrder}/>
+      <LineupBuilder roster={roster} lineup={lineup} onLineupChange={setLineup} rpRoles={rpRoles} onRpRolesChange={setRpRoles} onSimulate={runSim} onRosterChange={setRoster} spOrder={spOrder} onSpOrderChange={setSpOrder}/>
     </div>
   );
 
