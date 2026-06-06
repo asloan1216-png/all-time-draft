@@ -7090,6 +7090,7 @@ function ResultsScreen({result,roster,lineup,onReset,onShare,onReplay}){
           <button onClick={onReset} style={{flex:1,background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#000',border:'none',borderRadius:12,padding:'14px 8px',fontWeight:900,fontSize:14,cursor:'pointer',letterSpacing:0,whiteSpace:'nowrap'}}>DRAFT AGAIN</button>
           <button onClick={onShare} style={{flex:1,background:'rgba(96,165,250,0.08)',border:'1px solid #3b82f6',color:'#93c5fd',borderRadius:12,padding:'15px',fontWeight:700,fontSize:13,cursor:'pointer'}}>📋 Copy</button>
         </div>
+        <div style={{fontSize:11,color:'#475569',lineHeight:1.5,marginTop:16,fontStyle:'italic',textAlign:'center',maxWidth:440,marginLeft:'auto',marginRight:'auto'}}>Every roster has a true talent level calculated from real career stats. Each season simulates 162 games around that talent — so just like real baseball, a great team won’t post the exact same record twice. The expected range shows where this roster lands in a typical year.</div>
       </div>
     </div>
   );
