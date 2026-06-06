@@ -243,6 +243,7 @@ const SAMPLE_PLAYERS = [
   {id:'orlando-cabrera-2000s',name:"Orlando Cabrera",displayName:"Orlando Cabrera",team:'LAA',decade:'2000s',sampleNote:'',position:'2B',eligiblePositions:['2B','SS','DH'],type:'hitter',role:null,peakYears:[2005,2006,2007],avgWARperYear:3.6,stats:{avg:0.28,hr:8,obp:0.33,slg:0.388,wrcPlus:90,bsr:6.1,dwar:16.6}},
   {id:'vladimir-guerrero-1990s',name:"Vladimir Guerrero",displayName:"Vladimir Guerrero",team:'MON',decade:'1990s',sampleNote:'',position:'RF',eligiblePositions:['RF','DH'],type:'hitter',role:null,peakYears:[1998,1999,2000],avgWARperYear:5.8,stats:{avg:0.329,hr:41,obp:0.386,slg:0.618,wrcPlus:148,bsr:-1.6,dwar:-0.9}},
   {id:'vladimir-guerrero-2000s',name:"Vladimir Guerrero",displayName:"Vladimir Guerrero",team:'MON',decade:'2000s',sampleNote:'',position:'RF',eligiblePositions:['RF','DH'],type:'hitter',role:null,peakYears:[2000,2001,2002],avgWARperYear:6.1,stats:{avg:0.329,hr:39,obp:0.402,slg:0.608,wrcPlus:148,bsr:-0.5,dwar:-1.6}},
+  {id:'vladimir-guerrero-ana-2000s',name:"Vladimir Guerrero",displayName:"Vladimir Guerrero",team:'ANA',decade:'2000s',sampleNote:'',position:'RF',eligiblePositions:['RF','DH'],type:'hitter',role:null,peakYears:[2004,2005,2006],avgWARperYear:4.9,stats:{avg:0.328,hr:35,obp:0.389,slg:0.572,wrcPlus:145,bsr:-1.5,dwar:-3.2}},
   {id:'todd-frazier-2010s',name:"Todd Frazier",displayName:"Todd Frazier",team:'CIN',decade:'2010s',sampleNote:'',position:'1B',eligiblePositions:['1B','3B','DH'],type:'hitter',role:null,peakYears:[2014,2015,2016],avgWARperYear:3.9,stats:{avg:0.251,hr:35,obp:0.316,slg:0.474,wrcPlus:114,bsr:0.9,dwar:4.2}},
   {id:'troy-oleary-1990s',name:"Troy O'Leary",displayName:"Troy O'Leary",team:'BOS',decade:'1990s',sampleNote:'',position:'1B',eligiblePositions:['1B','DH'],type:'hitter',role:null,peakYears:[1997,1998,1999],avgWARperYear:2.0,stats:{avg:0.286,hr:22,obp:0.338,slg:0.481,wrcPlus:106,bsr:-1.1,dwar:-4.0}},
   {id:'brandon-phillips-2000s',name:"Brandon Phillips",displayName:"Brandon Phillips",team:'CIN',decade:'2000s',sampleNote:'',position:'2B',eligiblePositions:['2B','DH'],type:'hitter',role:null,peakYears:[2009,2010,2011],avgWARperYear:4.0,stats:{avg:0.283,hr:19,obp:0.338,slg:0.445,wrcPlus:109,bsr:0.8,dwar:10.0}},
@@ -6252,17 +6253,22 @@ function simulate(roster, lineup, decadeMode=false) {
   const rawWinPct = winExpectancy(rpg, rapg);
   const winPct = Math.min(rawWinPct * eraMult, 0.992); // 0.992 ≈ 161 wins ceiling
 
-  // Monte-Carlo a 162-game season, median of 7 runs for stability
-  const sims = Array.from({length:7}, () => {
+  // Monte-Carlo 1000 full seasons to capture real baseball variance.
+  // Headline = ONE actual simulated season (same roster varies; a perfect
+  // roster has a genuine rare shot at 162-0). Range = where it lands typically.
+  const seasons = Array.from({length:1000}, () => {
     let w=0; for(let i=0;i<162;i++) if(Math.random()<winPct) w++; return w;
-  }).sort((a,b)=>a-b);
-  const wins = sims[3];
+  });
+  const wins = seasons[Math.floor(Math.random()*seasons.length)];
+  const sortedSeasons = [...seasons].sort((a,b)=>a-b);
+  const winRange = [sortedSeasons[Math.floor(1000*0.10)], sortedSeasons[Math.floor(1000*0.90)]];
+  const expectedWins = Math.round(winPct*162);
 
   const syn = lineupSynergy(hitters);
   const benchmark = HISTORICAL_BENCHMARKS.find(b=>wins>=b.wins) || HISTORICAL_BENCHMARKS[HISTORICAL_BENCHMARKS.length-1];
 
   return {
-    wins, losses:162-wins, winPct, rawWinPct,
+    wins, losses:162-wins, winPct, rawWinPct, winRange, expectedWins,
     spRA9: staff.spRA9, rpRA9: staff.rpRA9,
     rpg: Math.round(rpg*10)/10,
     rapg: Math.round(rapg*10)/10,
@@ -7009,7 +7015,11 @@ function ResultsScreen({result,roster,lineup,onReset,onShare,onReplay}){
           <span style={{fontSize:48,color:'#1e3a5f'}}>-</span>
           <span style={{fontSize:64,fontWeight:700,color:'#1e3a5f',fontFamily:'Georgia,serif'}}>{162-anim}</span>
         </div>
-        
+        {show&&result.winRange&&(
+          <div style={{fontSize:12,color:'#475569',marginBottom:26,marginTop:2,letterSpacing:0.5}}>
+            Expected range: <span style={{color:'#94a3b8',fontWeight:600}}>{result.winRange[0]}–{result.winRange[1]} wins</span> in a typical season
+          </div>
+        )}
         {show&&(
           <div style={{textAlign:'left',marginBottom:32}}>
             {[
@@ -7252,10 +7262,13 @@ export default function App(){
       ).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
 
       // Fallback: same decade, any team — but NEVER show players from wrong decade
-      const decadePool=strictPool.length>0?strictPool:players.filter(p=>
+      let decadePool=strictPool.length>0?strictPool:players.filter(p=>
         notDrafted(p)&&p.decade===res.decade
       ).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,8);
-
+      if(decadePool.length===0){
+        decadePool=players.filter(p=>notDrafted(p))
+          .sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,8);
+      }
       setPool(decadePool);
     },1600);
   }
@@ -7538,10 +7551,18 @@ export default function App(){
                     setSpinning(true);
                     setTimeout(()=>{
                       let res;
-                      if(decadeMode&&lockedDecade){
-                        const teams=TEAMS_BY_DECADE[lockedDecade]||[];
-                        res={team:teams[Math.floor(Math.random()*teams.length)],decade:lockedDecade};
-                      } else res=randTeamDecade();
+                      {
+                        const _dIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
+                        const _dNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
+                        const _notD=p=>{if(_dIds.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !_dNames.has(dn);};
+                        const _need=getNeededPositions(roster);
+                        const _has=(team,decade)=>players.some(p=>{if(!_notD(p)||p.team!==team||p.decade!==decade)return false;if(p.type==='pitcher')return (p.role==='SP'&&_need.sp>0)||(p.role==='RP'&&_need.rp>0);return _need.hitter.length>0&&p.eligiblePositions.some(pos=>_need.hitter.includes(pos));});
+                        const _decs=(decadeMode&&lockedDecade)?[lockedDecade]:DECADES;
+                        let _combos=[];_decs.forEach(d=>(TEAMS_BY_DECADE[d]||[]).forEach(t=>_combos.push({team:t,decade:d})));
+                        let _valid=_combos.filter(c=>_has(c.team,c.decade));
+                        if(_valid.length===0){let _a=[];DECADES.forEach(d=>(TEAMS_BY_DECADE[d]||[]).forEach(t=>_a.push({team:t,decade:d})));_valid=_a.filter(c=>_has(c.team,c.decade));}
+                        res=_valid.length>0?_valid[Math.floor(Math.random()*_valid.length)]:((decadeMode&&lockedDecade)?{team:(TEAMS_BY_DECADE[lockedDecade]||[])[0],decade:lockedDecade}:randTeamDecade());
+                      }
                       setSpinRes(res);setSpinning(false);
                       const dIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
                       const dNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
