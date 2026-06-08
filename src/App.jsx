@@ -7008,85 +7008,105 @@ function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onS
 // STAGE 5 — FULL PA SIM ENGINE (box score generator)
 // ═══════════════════════════════════════════════════════════════
 
-function paOutcome(batter, pitcher) {
-  const avg  = batter.stats?.avg  || 0.260;
-  const obp  = batter.stats?.obp  || 0.320;
-  const slg  = batter.stats?.slg  || 0.400;
-  const hr   = batter.stats?.hr   || 15;
-  const hrRate = Math.min(hr / 550, 0.08);
-  const bbRate = Math.max(obp - avg, 0.04);
-  const soEst  = Math.max(0.12, 0.22 - (obp - 0.300) * 0.6);
-  const hitRate = avg;
-  const xbhRate = hrRate + Math.max(0, (slg - avg) * 0.30);
-  const singleRate = Math.max(hitRate - xbhRate, 0.01);
-  const doubleRate = Math.max(xbhRate - hrRate * 1.6, 0.005);
-  const tripleRate = 0.004;
-  const pitRA9 = pitcher
-    ? ((pitcher.stats?.fip || 4.2) * 0.6 + (pitcher.stats?.era || 4.2) * 0.4)
-    : 4.30;
-  const pitAdj = Math.max(0.70, Math.min(1.35, pitRA9 / 4.30));
-  const adjSingle = singleRate / pitAdj;
-  const adjDouble = doubleRate / pitAdj;
-  const adjTriple = tripleRate;
-  const adjHR     = hrRate / Math.sqrt(pitAdj);
-  const adjBB     = bbRate * (pitAdj > 1 ? 1.0 : 1.0 / pitAdj);
-  const adjSO     = soEst  * pitAdj;
+// Derive per-PA outcome probabilities that REPRODUCE a batter's card line
+// (AVG / OBP / SLG / HR). This is what makes each hitter post stats matching
+// their real ability instead of every hitter converging to the same inflated line.
+function paProbs(b) {
+  const s = b.stats || {};
+  const avg = Math.min(Math.max(s.avg ?? 0.260, 0.150), 0.380);
+  const obp = Math.min(Math.max(s.obp ?? 0.320, avg + 0.012), 0.500);
+  const slg = Math.max(s.slg ?? 0.400, avg + 0.020);
+  const hrSeason = Math.max(0, s.hr ?? 15);
+  let pBB = (obp - avg) / (1 - avg);
+  pBB = Math.min(Math.max(pBB, 0.02), 0.20);
+  const pHit = avg * (1 - pBB);
+  const pHR = Math.min(hrSeason / 700, 0.080);
+  const p3B = 0.0045;
+  const ISO = slg - avg;
+  let p2B = ISO * (1 - pBB) - 2 * p3B - 3 * pHR;
+  if (p2B < 0) p2B = 0;
+  p2B = Math.min(p2B, 0.068);
+  let p1B = pHit - pHR - p3B - p2B;
+  if (p1B < 0) p1B = 0;
+  const outTotal = Math.max(0, 1 - (pBB + p1B + p2B + p3B + pHR));
+  let pSO = Math.min(0.20 + (slg - 0.400) * 0.10, outTotal * 0.92);
+  if (pSO < 0) pSO = 0;
+  return { pBB, p1B, p2B, p3B, pHR, pSO };
+}
+function rollOutcome(pr) {
   const r = Math.random();
-  let cum = 0;
-  if ((cum += adjHR)     > r) return 'HR';
-  if ((cum += adjTriple) > r) return '3B';
-  if ((cum += adjDouble) > r) return '2B';
-  if ((cum += adjSingle) > r) return '1B';
-  if ((cum += adjBB)     > r) return 'BB';
-  if ((cum += adjSO)     > r) return 'SO';
+  let c = 0;
+  if ((c += pr.pHR) > r) return 'HR';
+  if ((c += pr.p3B) > r) return '3B';
+  if ((c += pr.p2B) > r) return '2B';
+  if ((c += pr.p1B) > r) return '1B';
+  if ((c += pr.pBB) > r) return 'BB';
+  if ((c += pr.pSO) > r) return 'SO';
   return 'OUT';
 }
-
-function simulateInning(lineup, lineupIdx, pitcherRA9adj) {
-  let outs = 0, runs = 0, hits = 0;
-  let bases = [false, false, false];
-  let idx = lineupIdx;
+function simInning(hitters, hStats, probsCache, startIdx) {
+  let outs = 0, runs = 0;
+  const bases = [null, null, null];
+  let idx = startIdx;
+  const score = (hi) => { if (hi != null) { hStats[hi].R++; runs++; } };
   while (outs < 3) {
-    const batter = lineup[idx % lineup.length];
-    const outcome = paOutcome(batter, { stats: { era: pitcherRA9adj * 0.96, fip: pitcherRA9adj } });
+    const bi = idx % hitters.length;
+    const st = hStats[bi];
+    const out = rollOutcome(probsCache[bi]);
     idx++;
-    if (outcome === 'BB') {
-      if (bases[0] && bases[1] && bases[2]) runs++;
-      else if (bases[0] && bases[1]) bases[2] = true;
-      else if (bases[0]) bases[1] = true;
-      else bases[0] = true;
-    } else if (outcome === '1B') {
-      hits++;
-      runs += bases[2] ? 1 : 0;
-      const nb = [true, bases[0], false];
-      if (bases[1]) runs++;
-      bases = nb;
-    } else if (outcome === '2B') {
-      hits++;
-      runs += (bases[2] ? 1 : 0) + (bases[1] ? 1 : 0);
-      if (bases[0]) runs += Math.random() < 0.55 ? 1 : 0;
-      bases = [false, true, false];
-    } else if (outcome === '3B') {
-      hits++;
-      runs += (bases[2] ? 1 : 0) + (bases[1] ? 1 : 0) + (bases[0] ? 1 : 0);
-      bases = [false, false, true];
-    } else if (outcome === 'HR') {
-      hits++;
-      runs += 1 + (bases[0] ? 1 : 0) + (bases[1] ? 1 : 0) + (bases[2] ? 1 : 0);
-      bases = [false, false, false];
+    st.PA++;
+    if (out === 'BB') {
+      st.BB++;
+      if (bases[0] != null && bases[1] != null && bases[2] != null) {
+        score(bases[2]); st.RBI++; bases[2] = bases[1]; bases[1] = bases[0]; bases[0] = bi;
+      } else if (bases[0] != null && bases[1] != null) {
+        bases[2] = bases[1]; bases[1] = bases[0]; bases[0] = bi;
+      } else if (bases[0] != null) {
+        bases[1] = bases[0]; bases[0] = bi;
+      } else { bases[0] = bi; }
+    } else if (out === 'SO') {
+      st.AB++; st.SO++; outs++;
+    } else if (out === 'OUT') {
+      st.AB++; outs++;
     } else {
-      outs++;
+      st.AB++; st.H++;
+      if (out === '1B') {
+        if (bases[2] != null) { score(bases[2]); st.RBI++; bases[2] = null; }
+        if (bases[1] != null) {
+          if (Math.random() < 0.65) { score(bases[1]); st.RBI++; } else { bases[2] = bases[1]; }
+          bases[1] = null;
+        }
+        if (bases[0] != null) { bases[1] = bases[0]; bases[0] = null; }
+        bases[0] = bi;
+      } else if (out === '2B') {
+        st.D++;
+        if (bases[2] != null) { score(bases[2]); st.RBI++; bases[2] = null; }
+        if (bases[1] != null) { score(bases[1]); st.RBI++; bases[1] = null; }
+        if (bases[0] != null) {
+          if (Math.random() < 0.55) { score(bases[0]); st.RBI++; } else { bases[2] = bases[0]; }
+          bases[0] = null;
+        }
+        bases[1] = bi;
+      } else if (out === '3B') {
+        for (let b = 0; b < 3; b++) { if (bases[b] != null) { score(bases[b]); st.RBI++; bases[b] = null; } }
+        st.T++; bases[2] = bi;
+      } else if (out === 'HR') {
+        for (let b = 0; b < 3; b++) { if (bases[b] != null) { score(bases[b]); st.RBI++; bases[b] = null; } }
+        score(bi); st.RBI++; st.HR++;
+      }
     }
   }
-  return { runs, hits, nextIdx: idx };
+  return { nextIdx: idx, runs };
 }
-
 function runFullSeasonSim(lineup, roster) {
   const hitters = lineup.filter(Boolean);
   const hStats = hitters.map(p => ({
-    id: p.id || p.name, name: p.displayName || p.name, pos: p.assignedPos || p.position,
+    id: p.id || p.name,
+    name: p.displayName || p.name,
+    pos: p.assignedPos || p.position,
     PA: 0, AB: 0, R: 0, H: 0, D: 0, T: 0, HR: 0, RBI: 0, BB: 0, SO: 0,
   }));
+  const probsCache = hitters.map(p => paProbs(p));
   const spKeys = ['sp1','sp2','sp3','sp4','sp5'].filter(k => roster[k]);
   const rpKeys = ['rp1','rp2','rp3','rp4'].filter(k => roster[k]);
   const spList = spKeys.map(k => roster[k]);
@@ -7094,35 +7114,30 @@ function runFullSeasonSim(lineup, roster) {
   const pStats = {};
   [...spList, ...rpList].forEach(p => {
     const key = p.id || p.name;
-    pStats[key] = { id: key, name: p.displayName || p.name, role: spList.includes(p) ? 'SP' : 'RP',
-      W: 0, L: 0, SV: 0, G: 0, GS: 0, IP: 0, H: 0, R: 0, ER: 0, BB: 0, SO: 0, _p: p };
+    pStats[key] = {
+      id: key, name: p.displayName || p.name,
+      role: spList.includes(p) ? 'SP' : 'RP',
+      W: 0, L: 0, SV: 0, G: 0, GS: 0, IP: 0, H: 0, R: 0, ER: 0, BB: 0, SO: 0, _p: p,
+    };
   });
-  let lineupIdx = 0, spTurn = 0;
   const spRotation = spList.length > 0 ? spList : [null];
+  let spTurn = 0;
   for (let g = 0; g < 162; g++) {
-    const sp = spRotation[spTurn % spRotation.length]; spTurn++;
+    const sp = spRotation[spTurn % spRotation.length];
+    spTurn++;
     const spKey = sp ? (sp.id || sp.name) : null;
     if (spKey) { pStats[spKey].G++; pStats[spKey].GS++; }
     let teamRuns = 0, oppRuns = 0;
-    for (let inn = 0; inn < 9; inn++) {
-      const offResult = simulateInning(hitters, lineupIdx, 4.30);
-      lineupIdx = offResult.nextIdx;
-      const battersUp = Math.min(offResult.hits + 3, 9);
-      for (let b = 0; b < battersUp; b++) {
-        const hi = (lineupIdx - battersUp + b + 999 * hitters.length) % hitters.length;
-        hStats[hi].PA++;
-      }
-      for (let r = 0; r < offResult.runs; r++) {
-        const ri = Math.floor(Math.random() * hitters.length);
-        hStats[ri].R++;
-        const rbi = (ri + hitters.length - 1) % hitters.length;
-        hStats[rbi].RBI++;
-      }
-      for (let h = 0; h < offResult.hits; h++) {
-        hStats[Math.floor(Math.random() * hitters.length)].H++;
-      }
-      teamRuns += offResult.runs;
-      let ourPitcher = (inn < 6 && sp) ? sp : (rpList.length > 0 ? rpList[Math.floor(Math.random() * rpList.length)] : sp);
+    let idx = 0;
+    const inningsThisGame = Math.random() < 0.45 ? 8 : 9;
+    for (let inn = 0; inn < inningsThisGame; inn++) {
+      const off = simInning(hitters, hStats, probsCache, idx);
+      idx = off.nextIdx;
+      teamRuns += off.runs;
+      let ourPitcher;
+      if (inn < 6 && sp) ourPitcher = sp;
+      else if (rpList.length > 0) ourPitcher = rpList[Math.floor(Math.random() * rpList.length)];
+      else ourPitcher = sp;
       const pitRA = ourPitcher
         ? ((ourPitcher.stats?.fip || 4.2) * 0.6 + (ourPitcher.stats?.era || 4.2) * 0.4) * (ERA_PITCH_ADJ[ourPitcher.decade] || 1.0)
         : 4.30;
@@ -7130,12 +7145,12 @@ function runFullSeasonSim(lineup, roster) {
       oppRuns += oppInnRuns;
       const pk = ourPitcher ? (ourPitcher.id || ourPitcher.name) : null;
       if (pk && pStats[pk]) {
-        pStats[pk].IP  += 1;
-        pStats[pk].R   += oppInnRuns;
-        pStats[pk].ER  += oppInnRuns;
-        pStats[pk].SO  += poissonSample((ourPitcher.stats?.k9 || 7.5) / 9);
-        pStats[pk].BB  += poissonSample(2.8 / 9);
-        pStats[pk].H   += poissonSample((pitRA * 0.85) / 9);
+        pStats[pk].IP += 1;
+        pStats[pk].R  += oppInnRuns;
+        pStats[pk].ER += oppInnRuns;
+        pStats[pk].SO += poissonSample((ourPitcher.stats?.k9 || 7.5) / 9);
+        pStats[pk].BB += poissonSample(2.8 / 9);
+        pStats[pk].H  += poissonSample((pitRA * 0.85) / 9);
       }
     }
     const win = teamRuns > oppRuns;
@@ -7151,31 +7166,15 @@ function runFullSeasonSim(lineup, roster) {
       if (ck && pStats[ck]) pStats[ck].SV++;
     }
   }
-  const targetPA = Math.round(162 * 4.0);
-  hStats.forEach(h => {
-    const p = hitters.find(x => (x.id || x.name) === h.id);
-    if (!p) return;
-    const slg = p.stats?.slg || 0.400, avg = p.stats?.avg || 0.260;
-    const hrPct = Math.min((p.stats?.hr || 15) / 550, 0.08);
-    const xbhFrac = Math.max(0, (slg - avg));
-    const hrFrac  = hrPct / Math.max(avg, 0.01);
-    h.HR = Math.round(h.H * hrFrac * 0.9);
-    h.T  = Math.round(h.H * 0.015);
-    h.D  = Math.round(h.H * xbhFrac * 0.55);
-    h.H  = Math.max(h.H, h.HR + h.T + h.D);
-    h.BB = Math.round(h.PA * Math.max(0, (p.stats?.obp || 0.320) - (p.stats?.avg || 0.260)));
-    h.SO = Math.round(h.PA * Math.max(0.10, 0.20 - ((p.stats?.obp || 0.320) - 0.300) * 0.5));
-    h.AB = Math.max(h.PA - h.BB, 1);
-    if (h.PA === 0) h.PA = targetPA;
-    const scale = targetPA / h.PA;
-    ['PA','AB','R','H','D','T','HR','RBI','BB','SO'].forEach(k => { h[k] = Math.round(h[k] * scale); });
-    h.AB = Math.max(h.PA - h.BB, 1);
-  });
   const pitcherList = Object.values(pStats).map(ps => {
     const ip = Math.max(ps.IP, 1);
     ps.ERA  = Math.round((ps.ER / ip * 9) * 100) / 100;
     ps.WHIP = Math.round(((ps.H + ps.BB) / ip) * 100) / 100;
-    if (ps.role === 'RP') { ps.G = Math.round(50 + Math.random() * 20); ps.GS = 0; ps.IP = Math.round(65 + Math.random() * 20); }
+    if (ps.role === 'RP') {
+      ps.G = Math.round(55 + Math.random() * 18);
+      ps.GS = 0;
+      ps.IP = Math.round(62 + Math.random() * 20);
+    }
     return ps;
   });
   return { hitters: hStats, pitchers: pitcherList };
