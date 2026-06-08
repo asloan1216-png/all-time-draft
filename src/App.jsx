@@ -7129,7 +7129,7 @@ function runFullSeasonSim(lineup, roster) {
     if (spKey) { pStats[spKey].G++; pStats[spKey].GS++; }
     let teamRuns = 0, oppRuns = 0;
     let idx = 0;
-    const inningsThisGame = Math.random() < 0.45 ? 8 : 9;
+    const inningsThisGame = 8; // ~8 batting innings/game -> realistic PA totals
     for (let inn = 0; inn < inningsThisGame; inn++) {
       const off = simInning(hitters, hStats, probsCache, idx);
       idx = off.nextIdx;
