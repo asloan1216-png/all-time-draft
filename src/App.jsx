@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Analytics } from '@vercel/analytics/react';
 
 // ═══════════════════════════════════════════════════════════════
 // CLEAN PLAYER DATA — every player tagged to real team + decade
@@ -7963,6 +7964,7 @@ export default function App(){
           )}
         </div>
       </div>
+      <Analytics />
     </div>
   );
 }
