@@ -7553,6 +7553,12 @@ export default function App(){
   const filled=Object.values(roster).filter(Boolean).length;
   const needed=getNeededPositions(roster);
   const draftComplete=filled===18;
+  // Does the current pool contain at least one player that can fill an OPEN slot?
+  // If not (or pool empty), the player cards are all disabled — so we must surface
+  // an unlimited "Spin Again" escape hatch to guarantee the draft can always finish.
+  const poolPickable = pool.some(p => (p.eligiblePositions||[]).some(pos =>
+    pos==='SP' ? needed.sp>0 : pos==='RP' ? needed.rp>0 : needed.hitter.includes(pos)
+  ));
   // Salary cap accounting
   const budgetSpent=Object.values(roster).filter(Boolean).reduce((s,p)=>s+playerPrice(p),0);
   const budgetLeft=SALARY_CAP_BUDGET-budgetSpent;
@@ -7610,8 +7616,15 @@ export default function App(){
         });
       }
 
+      // Pure-random roll: only require that the combo has ANY undrafted player left
+      // (so the banner matches a non-empty pool). Deliberately does NOT filter by
+      // current roster needs — a roll may offer a position you've already filled.
+      function poolHasAny(team, decade) {
+        return players.some(p => notDrafted(p) && p.team===team && p.decade===decade);
+      }
+
       // Normal spin or decade mode subsequent spins (team only, decade locked)
-      // Re-roll up to 50 times to find a team with eligible players for current needs
+      // Pure random — re-roll only to avoid a fully-exhausted (empty) combo.
       let attempts=0;
       if(isDaily&&dailyRolls.length>0){
         res=dailyRolls[dailyIdx]||randTeamDecade();setDailyIdx(i=>i+1);
@@ -7625,12 +7638,12 @@ export default function App(){
             res=randTeamDecade();
           }
           attempts++;
-        } while(attempts<200 && !poolHasNeeded(res.team, res.decade));
-        // Exhaustive fallback: try every team+decade combo until one works
-        if(!poolHasNeeded(res.team, res.decade)){
+        } while(attempts<200 && !poolHasAny(res.team, res.decade));
+        // Exhaustive fallback: find any combo that still has undrafted players
+        if(!poolHasAny(res.team, res.decade)){
           const allCombos=[];
           DECADES.forEach(dec=>(TEAMS_BY_DECADE[dec]||[]).forEach(team=>allCombos.push({team,decade:dec})));
-          const valid=allCombos.find(c=>poolHasNeeded(c.team,c.decade));
+          const valid=allCombos.find(c=>poolHasAny(c.team,c.decade));
           if(valid) res=valid;
         }
       }
@@ -7863,7 +7876,7 @@ export default function App(){
             </div>
           )}
 
-          {spinRes&&!spinning&&pool.length===0&&(
+          {spinRes&&!spinning&&!poolPickable&&(
             <div style={{textAlign:'center',color:'#334155',marginTop:20}}>
               {decadeMode&&!spinRes.team?(
                 <>
@@ -7873,14 +7886,16 @@ export default function App(){
                 </>
               ):(
                 <>
-                  <div style={{marginBottom:10,fontSize:13}}>No players found for <strong style={{color:'#f59e0b'}}>{spinRes.team}</strong> in the <strong style={{color:'#60a5fa'}}>{spinRes.decade}</strong>.</div>
+                  <div style={{marginBottom:10,fontSize:13}}>{pool.length===0
+                    ? <>No players found for <strong style={{color:'#f59e0b'}}>{spinRes.team}</strong> in the <strong style={{color:'#60a5fa'}}>{spinRes.decade}</strong>.</>
+                    : <>No <strong style={{color:'#f59e0b'}}>{spinRes.team}</strong> ({spinRes.decade}) players fit your open slots.</>}</div>
                   <button onClick={spin} style={{background:'rgba(245,158,11,0.08)',border:'1px solid #d97706',color:'#f59e0b',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontWeight:700,fontSize:13}}>🎰 Spin Again</button>
                 </>
               )}
             </div>
           )}
 
-          {pool.length>0&&(
+          {poolPickable&&(
             <>
               {pool.every(p=>p.team!==spinRes?.team)&&(
                 <div style={{fontSize:11,color:'#475569',marginBottom:10,fontStyle:'italic'}}>No {spinRes?.team} players available — showing best from the {spinRes?.decade}</div>
