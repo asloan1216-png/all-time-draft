@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 // CLEAN PLAYER DATA — every player tagged to real team + decade
@@ -6992,13 +6992,376 @@ function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onS
   );
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// STAGE 5 — FULL PA SIM ENGINE (box score generator)
+// ═══════════════════════════════════════════════════════════════
+
+function paOutcome(batter, pitcher) {
+  const avg  = batter.stats?.avg  || 0.260;
+  const obp  = batter.stats?.obp  || 0.320;
+  const slg  = batter.stats?.slg  || 0.400;
+  const hr   = batter.stats?.hr   || 15;
+  const hrRate = Math.min(hr / 550, 0.08);
+  const bbRate = Math.max(obp - avg, 0.04);
+  const soEst  = Math.max(0.12, 0.22 - (obp - 0.300) * 0.6);
+  const hitRate = avg;
+  const xbhRate = hrRate + Math.max(0, (slg - avg) * 0.30);
+  const singleRate = Math.max(hitRate - xbhRate, 0.01);
+  const doubleRate = Math.max(xbhRate - hrRate * 1.6, 0.005);
+  const tripleRate = 0.004;
+  const pitRA9 = pitcher
+    ? ((pitcher.stats?.fip || 4.2) * 0.6 + (pitcher.stats?.era || 4.2) * 0.4)
+    : 4.30;
+  const pitAdj = Math.max(0.70, Math.min(1.35, pitRA9 / 4.30));
+  const adjSingle = singleRate / pitAdj;
+  const adjDouble = doubleRate / pitAdj;
+  const adjTriple = tripleRate;
+  const adjHR     = hrRate / Math.sqrt(pitAdj);
+  const adjBB     = bbRate * (pitAdj > 1 ? 1.0 : 1.0 / pitAdj);
+  const adjSO     = soEst  * pitAdj;
+  const r = Math.random();
+  let cum = 0;
+  if ((cum += adjHR)     > r) return 'HR';
+  if ((cum += adjTriple) > r) return '3B';
+  if ((cum += adjDouble) > r) return '2B';
+  if ((cum += adjSingle) > r) return '1B';
+  if ((cum += adjBB)     > r) return 'BB';
+  if ((cum += adjSO)     > r) return 'SO';
+  return 'OUT';
+}
+
+function simulateInning(lineup, lineupIdx, pitcherRA9adj) {
+  let outs = 0, runs = 0, hits = 0;
+  let bases = [false, false, false];
+  let idx = lineupIdx;
+  while (outs < 3) {
+    const batter = lineup[idx % lineup.length];
+    const outcome = paOutcome(batter, { stats: { era: pitcherRA9adj * 0.96, fip: pitcherRA9adj } });
+    idx++;
+    if (outcome === 'BB') {
+      if (bases[0] && bases[1] && bases[2]) runs++;
+      else if (bases[0] && bases[1]) bases[2] = true;
+      else if (bases[0]) bases[1] = true;
+      else bases[0] = true;
+    } else if (outcome === '1B') {
+      hits++;
+      runs += bases[2] ? 1 : 0;
+      const nb = [true, bases[0], false];
+      if (bases[1]) runs++;
+      bases = nb;
+    } else if (outcome === '2B') {
+      hits++;
+      runs += (bases[2] ? 1 : 0) + (bases[1] ? 1 : 0);
+      if (bases[0]) runs += Math.random() < 0.55 ? 1 : 0;
+      bases = [false, true, false];
+    } else if (outcome === '3B') {
+      hits++;
+      runs += (bases[2] ? 1 : 0) + (bases[1] ? 1 : 0) + (bases[0] ? 1 : 0);
+      bases = [false, false, true];
+    } else if (outcome === 'HR') {
+      hits++;
+      runs += 1 + (bases[0] ? 1 : 0) + (bases[1] ? 1 : 0) + (bases[2] ? 1 : 0);
+      bases = [false, false, false];
+    } else {
+      outs++;
+    }
+  }
+  return { runs, hits, nextIdx: idx };
+}
+
+function runFullSeasonSim(lineup, roster) {
+  const hitters = lineup.filter(Boolean);
+  const hStats = hitters.map(p => ({
+    id: p.id || p.name, name: p.displayName || p.name, pos: p.assignedPos || p.position,
+    PA: 0, AB: 0, R: 0, H: 0, D: 0, T: 0, HR: 0, RBI: 0, BB: 0, SO: 0,
+  }));
+  const spKeys = ['sp1','sp2','sp3','sp4','sp5'].filter(k => roster[k]);
+  const rpKeys = ['rp1','rp2','rp3','rp4'].filter(k => roster[k]);
+  const spList = spKeys.map(k => roster[k]);
+  const rpList = rpKeys.map(k => roster[k]);
+  const pStats = {};
+  [...spList, ...rpList].forEach(p => {
+    const key = p.id || p.name;
+    pStats[key] = { id: key, name: p.displayName || p.name, role: spList.includes(p) ? 'SP' : 'RP',
+      W: 0, L: 0, SV: 0, G: 0, GS: 0, IP: 0, H: 0, R: 0, ER: 0, BB: 0, SO: 0, _p: p };
+  });
+  let lineupIdx = 0, spTurn = 0;
+  const spRotation = spList.length > 0 ? spList : [null];
+  for (let g = 0; g < 162; g++) {
+    const sp = spRotation[spTurn % spRotation.length]; spTurn++;
+    const spKey = sp ? (sp.id || sp.name) : null;
+    if (spKey) { pStats[spKey].G++; pStats[spKey].GS++; }
+    let teamRuns = 0, oppRuns = 0;
+    for (let inn = 0; inn < 9; inn++) {
+      const offResult = simulateInning(hitters, lineupIdx, 4.30);
+      lineupIdx = offResult.nextIdx;
+      const battersUp = Math.min(offResult.hits + 3, 9);
+      for (let b = 0; b < battersUp; b++) {
+        const hi = (lineupIdx - battersUp + b + 999 * hitters.length) % hitters.length;
+        hStats[hi].PA++;
+      }
+      for (let r = 0; r < offResult.runs; r++) {
+        const ri = Math.floor(Math.random() * hitters.length);
+        hStats[ri].R++;
+        const rbi = (ri + hitters.length - 1) % hitters.length;
+        hStats[rbi].RBI++;
+      }
+      for (let h = 0; h < offResult.hits; h++) {
+        hStats[Math.floor(Math.random() * hitters.length)].H++;
+      }
+      teamRuns += offResult.runs;
+      let ourPitcher = (inn < 6 && sp) ? sp : (rpList.length > 0 ? rpList[Math.floor(Math.random() * rpList.length)] : sp);
+      const pitRA = ourPitcher
+        ? ((ourPitcher.stats?.fip || 4.2) * 0.6 + (ourPitcher.stats?.era || 4.2) * 0.4) * (ERA_PITCH_ADJ[ourPitcher.decade] || 1.0)
+        : 4.30;
+      const oppInnRuns = poissonSample(pitRA / 9);
+      oppRuns += oppInnRuns;
+      const pk = ourPitcher ? (ourPitcher.id || ourPitcher.name) : null;
+      if (pk && pStats[pk]) {
+        pStats[pk].IP  += 1;
+        pStats[pk].R   += oppInnRuns;
+        pStats[pk].ER  += oppInnRuns;
+        pStats[pk].SO  += poissonSample((ourPitcher.stats?.k9 || 7.5) / 9);
+        pStats[pk].BB  += poissonSample(2.8 / 9);
+        pStats[pk].H   += poissonSample((pitRA * 0.85) / 9);
+      }
+    }
+    const win = teamRuns > oppRuns;
+    if (spKey) { if (win) pStats[spKey].W++; else pStats[spKey].L++; }
+    if (!win && rpList.length > 0) {
+      const loser = rpList[Math.floor(Math.random() * rpList.length)];
+      const lk = loser.id || loser.name;
+      if (lk && pStats[lk]) pStats[lk].L++;
+    }
+    if (win && rpList.length > 0 && teamRuns - oppRuns <= 3) {
+      const closer = rpList[0];
+      const ck = closer.id || closer.name;
+      if (ck && pStats[ck]) pStats[ck].SV++;
+    }
+  }
+  const targetPA = Math.round(162 * 4.0);
+  hStats.forEach(h => {
+    const p = hitters.find(x => (x.id || x.name) === h.id);
+    if (!p) return;
+    const slg = p.stats?.slg || 0.400, avg = p.stats?.avg || 0.260;
+    const hrPct = Math.min((p.stats?.hr || 15) / 550, 0.08);
+    const xbhFrac = Math.max(0, (slg - avg));
+    const hrFrac  = hrPct / Math.max(avg, 0.01);
+    h.HR = Math.round(h.H * hrFrac * 0.9);
+    h.T  = Math.round(h.H * 0.015);
+    h.D  = Math.round(h.H * xbhFrac * 0.55);
+    h.H  = Math.max(h.H, h.HR + h.T + h.D);
+    h.BB = Math.round(h.PA * Math.max(0, (p.stats?.obp || 0.320) - (p.stats?.avg || 0.260)));
+    h.SO = Math.round(h.PA * Math.max(0.10, 0.20 - ((p.stats?.obp || 0.320) - 0.300) * 0.5));
+    h.AB = Math.max(h.PA - h.BB, 1);
+    if (h.PA === 0) h.PA = targetPA;
+    const scale = targetPA / h.PA;
+    ['PA','AB','R','H','D','T','HR','RBI','BB','SO'].forEach(k => { h[k] = Math.round(h[k] * scale); });
+    h.AB = Math.max(h.PA - h.BB, 1);
+  });
+  const pitcherList = Object.values(pStats).map(ps => {
+    const ip = Math.max(ps.IP, 1);
+    ps.ERA  = Math.round((ps.ER / ip * 9) * 100) / 100;
+    ps.WHIP = Math.round(((ps.H + ps.BB) / ip) * 100) / 100;
+    if (ps.role === 'RP') { ps.G = Math.round(50 + Math.random() * 20); ps.GS = 0; ps.IP = Math.round(65 + Math.random() * 20); }
+    return ps;
+  });
+  return { hitters: hStats, pitchers: pitcherList };
+}
+
+function poissonSample(lambda) {
+  if (lambda <= 0) return 0;
+  const L = Math.exp(-lambda);
+  let k = 0, p = 1;
+  do { k++; p *= Math.random(); } while (p > L && k < 20);
+  return k - 1;
+}
+
+function BoxScoreView({ boxScore }) {
+  const [tab, setTab] = React.useState('hit');
+  const { hitters, pitchers } = boxScore;
+  const hRows = hitters.map(h => {
+    const ab = Math.max(h.AB, 1);
+    return { ...h,
+      AVG:  h.AB > 0 ? (h.H / h.AB).toFixed(3).replace(/^0/, '') : '.000',
+      OBP:  h.PA > 0 ? ((h.H + h.BB) / h.PA).toFixed(3).replace(/^0/, '') : '.000',
+      SLG:  h.AB > 0 ? ((h.H - h.D - h.T - h.HR + h.D * 2 + h.T * 3 + h.HR * 4) / h.AB).toFixed(3).replace(/^0/, '') : '.000',
+    };
+  });
+  const mvp = [...hRows].sort((a, b) => {
+    const ops = r => (parseFloat(r.OBP) || 0) + (parseFloat(r.SLG) || 0);
+    return ops(b) - ops(a);
+  })[0];
+  const spRows = pitchers.filter(p => p.role === 'SP');
+  const rpRows = pitchers.filter(p => p.role === 'RP');
+  const cyYoung = [...spRows].filter(p => p.IP >= 80).sort((a, b) => a.ERA - b.ERA)[0];
+  const leaders = {
+    HR:  [...hRows].sort((a,b)=>b.HR-a.HR)[0],
+    RBI: [...hRows].sort((a,b)=>b.RBI-a.RBI)[0],
+    AVG: [...hRows].filter(h=>h.AB>300).sort((a,b)=>parseFloat(b.AVG)-parseFloat(a.AVG))[0],
+    ERA: [...spRows].filter(p=>p.IP>=80).sort((a,b)=>a.ERA-b.ERA)[0],
+    SO:  [...spRows].sort((a,b)=>b.SO-a.SO)[0],
+    SV:  [...rpRows].sort((a,b)=>b.SV-a.SV)[0],
+  };
+  const cellStyle = (bold) => ({
+    padding: '5px 8px', fontSize: 11, color: bold ? '#f1f5f9' : '#94a3b8',
+    fontWeight: bold ? 700 : 400, textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'monospace',
+  });
+  const thStyle = { padding: '5px 8px', fontSize: 10, color: '#475569', textAlign: 'right',
+    whiteSpace: 'nowrap', letterSpacing: 0.5, fontWeight: 700, borderBottom: '1px solid #1e3a5f' };
+  const nameStyle = { padding: '5px 8px', fontSize: 11, color: '#e2e8f0', textAlign: 'left',
+    whiteSpace: 'nowrap', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis' };
+  const posStyle  = { padding: '5px 8px', fontSize: 10, color: '#475569', textAlign: 'left', whiteSpace: 'nowrap' };
+  const tabBtn = (id, label) => (
+    <button onClick={() => setTab(id)}
+      style={{ padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 8, border: 'none',
+        background: tab === id ? 'rgba(245,158,11,0.18)' : 'transparent',
+        color: tab === id ? '#f59e0b' : '#475569', cursor: 'pointer', letterSpacing: 0.5 }}>
+      {label}
+    </button>
+  );
+  return (
+    <div style={{ marginTop: 20, background: 'rgba(4,10,22,0.95)', border: '1px solid #1e3a5f',
+      borderRadius: 16, padding: '18px 14px', textAlign: 'left' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {mvp && (
+          <div style={{ flex: 1, minWidth: 140, background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)',
+            borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: '#a16207', marginBottom: 4, fontWeight: 700 }}>🏆 MVP</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>{mvp.name}</div>
+            <div style={{ fontSize: 10, color: '#94a3b8' }}>{mvp.HR} HR · {mvp.RBI} RBI · {mvp.AVG}/{mvp.OBP}/{mvp.SLG}</div>
+          </div>
+        )}
+        {cyYoung && (
+          <div style={{ flex: 1, minWidth: 140, background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.25)',
+            borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: '#3b82f6', marginBottom: 4, fontWeight: 700 }}>🏆 CY YOUNG</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#60a5fa' }}>{cyYoung.name}</div>
+            <div style={{ fontSize: 10, color: '#94a3b8' }}>{cyYoung.W}-{cyYoung.L} · {cyYoung.ERA} ERA · {cyYoung.SO} K</div>
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 16 }}>
+        {[
+          { label: 'HR Leader', key: 'HR', val: r => r?.HR },
+          { label: 'RBI Leader', key: 'RBI', val: r => r?.RBI },
+          { label: 'AVG Leader', key: 'AVG', val: r => r?.AVG },
+          { label: 'ERA Leader', key: 'ERA', val: r => r?.ERA },
+          { label: 'K Leader', key: 'SO', val: r => r?.SO },
+          { label: 'Saves Leader', key: 'SV', val: r => r?.SV },
+        ].map(({ label, key, val }) => {
+          const r = leaders[key];
+          return r ? (
+            <div key={key} style={{ background: 'rgba(8,16,32,0.8)', border: '1px solid #0f1f35',
+              borderRadius: 8, padding: '7px 9px' }}>
+              <div style={{ fontSize: 9, color: '#334155', letterSpacing: 1, marginBottom: 2 }}>{label}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap',
+                overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
+              <div style={{ fontSize: 11, color: '#f59e0b', fontFamily: 'monospace' }}>{val(r)}</div>
+            </div>
+          ) : null;
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 10, borderBottom: '1px solid #0f1f35', paddingBottom: 8 }}>
+        {tabBtn('hit', '⚾ Hitters')}
+        {tabBtn('pit', '🔥 Pitchers')}
+      </div>
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        {tab === 'hit' && (
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, textAlign: 'left' }}>POS</th>
+                <th style={{ ...thStyle, textAlign: 'left' }}>NAME</th>
+                {['PA','AB','R','H','2B','3B','HR','RBI','BB','SO','AVG','OBP','SLG'].map(h => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {hRows.map((h, i) => (
+                <tr key={h.id} style={{ background: i % 2 === 0 ? 'rgba(8,16,32,0.4)' : 'transparent',
+                  borderBottom: '1px solid #080f1e' }}>
+                  <td style={posStyle}>{h.pos}</td>
+                  <td style={nameStyle}>{h.name}</td>
+                  <td style={cellStyle(false)}>{h.PA}</td>
+                  <td style={cellStyle(false)}>{h.AB}</td>
+                  <td style={cellStyle(false)}>{h.R}</td>
+                  <td style={cellStyle(true)}>{h.H}</td>
+                  <td style={cellStyle(false)}>{h.D}</td>
+                  <td style={cellStyle(false)}>{h.T}</td>
+                  <td style={cellStyle(true)}>{h.HR}</td>
+                  <td style={cellStyle(true)}>{h.RBI}</td>
+                  <td style={cellStyle(false)}>{h.BB}</td>
+                  <td style={cellStyle(false)}>{h.SO}</td>
+                  <td style={cellStyle(true)}>{h.AVG}</td>
+                  <td style={cellStyle(false)}>{h.OBP}</td>
+                  <td style={cellStyle(false)}>{h.SLG}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {tab === 'pit' && (
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 520 }}>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, textAlign: 'left' }}>ROLE</th>
+                <th style={{ ...thStyle, textAlign: 'left' }}>NAME</th>
+                {['W','L','SV','G','GS','IP','H','R','ER','BB','SO','ERA','WHIP'].map(h => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...spRows, ...rpRows].map((p, i) => (
+                <tr key={p.id} style={{ background: i % 2 === 0 ? 'rgba(8,16,32,0.4)' : 'transparent',
+                  borderBottom: '1px solid #080f1e' }}>
+                  <td style={{ ...posStyle, color: p.role === 'SP' ? '#60a5fa' : '#a78bfa' }}>{p.role}</td>
+                  <td style={nameStyle}>{p.name}</td>
+                  <td style={cellStyle(true)}>{p.W}</td>
+                  <td style={cellStyle(false)}>{p.L}</td>
+                  <td style={cellStyle(false)}>{p.SV}</td>
+                  <td style={cellStyle(false)}>{p.G}</td>
+                  <td style={cellStyle(false)}>{p.GS}</td>
+                  <td style={cellStyle(false)}>{p.IP}</td>
+                  <td style={cellStyle(false)}>{p.H}</td>
+                  <td style={cellStyle(false)}>{p.R}</td>
+                  <td style={cellStyle(false)}>{p.ER}</td>
+                  <td style={cellStyle(false)}>{p.BB}</td>
+                  <td style={cellStyle(false)}>{p.SO}</td>
+                  <td style={cellStyle(true)}>{p.ERA}</td>
+                  <td style={cellStyle(false)}>{p.WHIP}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
 // ═══════════════════════════════════════════════════════════════
 // RESULTS
 // ═══════════════════════════════════════════════════════════════
 function ResultsScreen({result,roster,lineup,onReset,onShare,onReplay}){
+  const [boxScore,setBoxScore]=React.useState(null);
+  const [simRunning,setSimRunning]=React.useState(false);
+  function buildBoxScore(){
+    if(simRunning||boxScore) return;
+    setSimRunning(true);
+    setTimeout(()=>{
+      try{
+        const bs=runFullSeasonSim(lineup.filter(Boolean),roster);
+        setBoxScore(bs);
+      }catch(e){console.error('BoxScore sim error:',e);}
+      setSimRunning(false);
+    },50);
+  }
   const [anim,setAnim]=useState(0);const[show,setShow]=useState(false);
   useEffect(()=>{
-    setShow(false); setAnim(0);
+    setShow(false); setAnim(0); setBoxScore(null); setSimRunning(false);
     let n=0;const t=result.wins;
     // Slower animation: ~3 seconds for dramatic effect
     const duration=3000, steps=90, inc=t/steps;
@@ -7086,6 +7449,14 @@ function ResultsScreen({result,roster,lineup,onReset,onShare,onReplay}){
         {show&&onReplay&&(
           <button onClick={onReplay} style={{width:'100%',marginBottom:10,background:'rgba(74,222,128,0.07)',border:'1px solid rgba(74,222,128,0.35)',color:'#4ade80',borderRadius:12,padding:'13px',fontWeight:700,fontSize:13,cursor:'pointer',letterSpacing:0.5}}>🔄 Replay Season <span style={{color:'#475569',fontWeight:400}}>· same roster, new luck</span></button>
         )}
+        {show&&!boxScore&&(
+          <button onClick={buildBoxScore} disabled={simRunning}
+            style={{width:'100%',marginBottom:10,background:simRunning?'rgba(96,165,250,0.04)':'rgba(96,165,250,0.07)',border:'1px solid rgba(96,165,250,0.35)',color:simRunning?'#334155':'#93c5fd',borderRadius:12,padding:'13px',fontWeight:700,fontSize:13,cursor:simRunning?'default':'pointer',letterSpacing:0.5}}>
+            {simRunning?'⏳ Simulating full season…':'📊 Full Season Stats'}
+            {!simRunning&&<span style={{color:'#475569',fontWeight:400}}> · hitter & pitcher box score</span>}
+          </button>
+        )}
+        {show&&boxScore&&<BoxScoreView boxScore={boxScore}/>}
         <div style={{display:'flex',gap:10}}>
           <button onClick={onReset} style={{flex:1,background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#000',border:'none',borderRadius:12,padding:'14px 8px',fontWeight:900,fontSize:14,cursor:'pointer',letterSpacing:0,whiteSpace:'nowrap'}}>DRAFT AGAIN</button>
           <button onClick={onShare} style={{flex:1,background:'rgba(96,165,250,0.08)',border:'1px solid #3b82f6',color:'#93c5fd',borderRadius:12,padding:'15px',fontWeight:700,fontSize:13,cursor:'pointer'}}>📋 Copy</button>
