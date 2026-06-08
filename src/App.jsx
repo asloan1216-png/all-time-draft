@@ -6077,12 +6077,15 @@ const LG_AVG_RPG = 4.30; // Neutral modern run environment
 // Above 140, apply diminishing returns — no real team has ever sustained
 // a pure all-peak lineup, and the 1927 Yankees (~6.3 R/G) are the ceiling.
 function offenseFromWRC(avgWRC) {
-  // Above 140: diminishing returns (no real lineup sustains pure peak; 1927 Yankees ~6.3 R/G ceiling)
-  if (avgWRC >= 140) return LG_AVG_RPG * 1.40 + (avgWRC - 140) * 0.0163 * 0.55;
-  // 90-140: clean multiplicative (validated vs real seasons — 2023 Braves, league avgs)
-  if (avgWRC >= 90)  return LG_AVG_RPG * (avgWRC / 100);
-  // Below 90: steeper crater. A 75-85 wRC+ offense is historically awful
-  // (2010 Mariners: 85 wRC+, scored 3.17 R/G, went 61-101). Punting offense must hurt.
+  // Calibrated to real team seasons (post-regression wRC+ inputs):
+  // 100 wRC+ → 4.30 R/G  (league avg)
+  // 110 wRC+ → 4.73 R/G  (~2019 Cardinals)
+  // 118 wRC+ → 5.07 R/G  (~2018 Red Sox)
+  // 125 wRC+ → 5.38 R/G  (~2019 Astros, best modern offense)
+  // 135 wRC+ → 5.72 R/G  (~1927 Yankees territory)
+  if (avgWRC >= 130) return LG_AVG_RPG * 1.28 + (avgWRC - 130) * 0.034;
+  if (avgWRC >= 105) return LG_AVG_RPG * (1.0 + (avgWRC - 100) * 0.0086);
+  if (avgWRC >= 90)  return LG_AVG_RPG * (1.0 + (avgWRC - 100) * 0.010);
   const at90 = LG_AVG_RPG * 0.90;
   return Math.max(2.0, at90 - (90 - avgWRC) * 0.065);
 }
@@ -6092,7 +6095,10 @@ function lineupRunsPerGame(lineup) {
   const valid = lineup.filter(Boolean);
   if (valid.length < 9) return { rpg:0, construction:0, baseRPG:0, avgWRC:100 };
 
-  const avgWRC = valid.reduce((s,p)=>s+(p.stats?.wrcPlus||100),0)/valid.length;
+  const rawAvgWRC = valid.reduce((s,p)=>s+(p.stats?.wrcPlus||100),0)/valid.length;
+  // Regress 35% toward league average: peak wRC+ cards overstate sustained team production.
+  // Real great teams (2019 Astros, 2018 Red Sox) averaged 118-125 wRC+, not 135-150.
+  const avgWRC = rawAvgWRC * 0.65 + 100 * 0.35;
   const baseRPG = offenseFromWRC(avgWRC);
 
   // Lineup construction signal (batting order quality + team plate discipline)
@@ -6123,7 +6129,7 @@ function lineupRunsPerGame(lineup) {
   if (topBSR>6) c+=0.008;
 
   c = Math.max(-0.055, Math.min(0.04, c)); // penalty up to -5.5%, bonus capped at +4%
-  return { rpg: baseRPG*(1+c), construction:c, baseRPG, avgWRC };
+  return { rpg: baseRPG*(1+c), construction:c, baseRPG, avgWRC, rawAvgWRC };
 }
 
 // ── PITCHER: FIP/ERA blend → runs allowed per 9 ──────────────────
@@ -6132,7 +6138,9 @@ function lineupRunsPerGame(lineup) {
 function pitcherRA9(p) {
   const s = p.stats;
   const fip = s.fip || 4.20, era = s.era || 4.20;
-  return (0.60*fip + 0.40*era) * (ERA_PITCH_ADJ[p.decade]||1.0) * 1.045;
+  const raw = (0.60*fip + 0.40*era) * (ERA_PITCH_ADJ[p.decade]||1.0) * 1.045;
+  // Regress 25% toward league average: peak ERA cards overstate sustained dominance.
+  return raw * 0.75 + 4.30 * 0.25;
 }
 
 // Combine the full staff into a team runs-allowed-per-game figure.
@@ -6169,9 +6177,9 @@ function staffRunsAllowedPerGame(starters, relievers, lineup) {
   // DIMINISHING RETURNS: stacking aces can't push a full-season staff to absurd lows.
   // No real rotation has sustained sub-2.7 RA over 162 games (1966 Dodgers 2.87,
   // 2018 Astros 3.16 are the gold standard). Below 3.2 RA, only 55% of further gains count.
-  if (ra < 3.2) {
-    const excess = 3.2 - ra;
-    ra = 3.2 - excess * 0.55;
+  if (ra < 3.8) {
+    const excess = 3.8 - ra;
+    ra = 3.8 - excess * 0.45;
   }
   // Hard floor 2.4 — still better than any real team's full season, but reachable only by a perfect staff.
   return { ra: Math.max(2.4, ra), spRA9: Math.round(spRA*100)/100, rpRA9: Math.round(rpRA*100)/100 };
@@ -6182,7 +6190,7 @@ function staffRunsAllowedPerGame(starters, relievers, lineup) {
 // self-adjusting to the run environment (Smyth/Patriot).
 function winExpectancy(rpg, rapg) {
   const r = Math.max(0.5, rpg), a = Math.max(0.5, rapg);
-  const exp = Math.pow(r + a, 0.287);
+  const exp = Math.pow(r + a, 0.310);
   return Math.pow(r, exp) / (Math.pow(r, exp) + Math.pow(a, exp));
 }
 
@@ -6272,7 +6280,7 @@ function simulate(roster, lineup, decadeMode=false) {
     spRA9: staff.spRA9, rpRA9: staff.rpRA9,
     rpg: Math.round(rpg*10)/10,
     rapg: Math.round(rapg*10)/10,
-    avgWRC: Math.round(off.avgWRC),
+    avgWRC: Math.round(off.rawAvgWRC ?? off.avgWRC),
     constructionPct: off.construction,
     benchmark,
     synBonuses: syn.bonuses,
