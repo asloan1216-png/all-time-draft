@@ -7205,14 +7205,14 @@ function BoxScoreView({ boxScore }) {
     SV:  [...rpRows].sort((a,b)=>b.SV-a.SV)[0],
   };
   const cellStyle = (bold) => ({
-    padding: '5px 8px', fontSize: 11, color: bold ? '#f1f5f9' : '#94a3b8',
+    padding: '5px 7px', fontSize: 12, color: bold ? '#f1f5f9' : '#94a3b8',
     fontWeight: bold ? 700 : 400, textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'monospace',
   });
-  const thStyle = { padding: '5px 8px', fontSize: 10, color: '#475569', textAlign: 'right',
+  const thStyle = { padding: '5px 7px', fontSize: 11, color: '#475569', textAlign: 'right',
     whiteSpace: 'nowrap', letterSpacing: 0.5, fontWeight: 700, borderBottom: '1px solid #1e3a5f' };
-  const nameStyle = { padding: '5px 8px', fontSize: 11, color: '#e2e8f0', textAlign: 'left',
+  const nameStyle = { padding: '5px 7px', fontSize: 12, color: '#e2e8f0', textAlign: 'left',
     whiteSpace: 'nowrap', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis' };
-  const posStyle  = { padding: '5px 8px', fontSize: 10, color: '#475569', textAlign: 'left', whiteSpace: 'nowrap' };
+  const posStyle  = { padding: '5px 7px', fontSize: 11, color: '#475569', textAlign: 'left', whiteSpace: 'nowrap' };
   const tabBtn = (id, label) => (
     <button onClick={() => setTab(id)}
       style={{ padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 8, border: 'none',
@@ -7269,7 +7269,7 @@ function BoxScoreView({ boxScore }) {
       </div>
       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {tab === 'hit' && (
-          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 0 }}>
             <thead>
               <tr>
                 <th style={{ ...thStyle, textAlign: 'left' }}>POS</th>
@@ -7304,7 +7304,7 @@ function BoxScoreView({ boxScore }) {
           </table>
         )}
         {tab === 'pit' && (
-          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 520 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 0 }}>
             <thead>
               <tr>
                 <th style={{ ...thStyle, textAlign: 'left' }}>ROLE</th>
@@ -7371,7 +7371,7 @@ function ResultsScreen({result,roster,lineup,onReset,onShare,onReplay}){
   const col=result.wins>=116?'#FFD700':result.wins>=100?'#60a5fa':result.wins>=90?'#4ade80':result.wins>=81?'#94a3b8':'#f87171';
   return(
     <div style={{minHeight:'100vh',background:'radial-gradient(ellipse at 50% 0%,#0d2137,#060c14 70%)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:'Georgia,serif',color:'#e2e8f0'}}>
-      <div style={{background:'rgba(6,14,28,0.98)',border:'1px solid #1e3a5f',borderRadius:28,padding:'48px 56px',maxWidth:500,width:'100%',textAlign:'center'}}>
+      <div style={{background:'rgba(6,14,28,0.98)',border:'1px solid #1e3a5f',borderRadius:28,padding:boxScore?'32px 28px':'48px 56px',maxWidth:boxScore?780:500,width:'100%',textAlign:'center',transition:'max-width 0.3s ease'}}>
         <div style={{fontSize:10,letterSpacing:6,color:'#334155',marginBottom:32}}>SEASON COMPLETE</div>
         <div style={{display:'flex',alignItems:'baseline',justifyContent:'center',gap:10,marginBottom:14}}>
           <span style={{fontSize:96,fontWeight:900,color:col,lineHeight:1,fontFamily:'Georgia,serif'}}>{anim}</span>
