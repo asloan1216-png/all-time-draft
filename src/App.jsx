@@ -6269,7 +6269,10 @@ function simulate(roster, lineup, decadeMode=false) {
   });
   const wins = seasons[Math.floor(Math.random()*seasons.length)];
   const sortedSeasons = [...seasons].sort((a,b)=>a-b);
-  const winRange = [sortedSeasons[Math.floor(1000*0.10)], sortedSeasons[Math.floor(1000*0.90)]];
+  // Range = 10th-90th percentile (typical season), bracketed to always include the
+  // headline draw so the displayed result never falls outside its own stated range.
+  const p10 = sortedSeasons[Math.floor(1000*0.10)], p90 = sortedSeasons[Math.floor(1000*0.90)];
+  const winRange = [Math.min(p10, wins), Math.max(p90, wins)];
   const expectedWins = Math.round(winPct*162);
 
   const syn = lineupSynergy(hitters);
