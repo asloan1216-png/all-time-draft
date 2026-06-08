@@ -7179,7 +7179,7 @@ function poissonSample(lambda) {
 }
 
 function BoxScoreView({ boxScore }) {
-  const [tab, setTab] = React.useState('hit');
+  const [tab, setTab] = useState('hit');
   const { hitters, pitchers } = boxScore;
   const hRows = hitters.map(h => {
     const ab = Math.max(h.AB, 1);
@@ -7346,8 +7346,8 @@ function BoxScoreView({ boxScore }) {
 // RESULTS
 // ═══════════════════════════════════════════════════════════════
 function ResultsScreen({result,roster,lineup,onReset,onShare,onReplay}){
-  const [boxScore,setBoxScore]=React.useState(null);
-  const [simRunning,setSimRunning]=React.useState(false);
+  const [boxScore,setBoxScore]=useState(null);
+  const [simRunning,setSimRunning]=useState(false);
   function buildBoxScore(){
     if(simRunning||boxScore) return;
     setSimRunning(true);
