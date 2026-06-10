@@ -7013,10 +7013,17 @@ function LineupBuilder({roster,lineup,onLineupChange,rpRoles,onRpRolesChange,onS
 // their real ability instead of every hitter converging to the same inflated line.
 function paProbs(b) {
   const s = b.stats || {};
-  const avg = Math.min(Math.max(s.avg ?? 0.260, 0.150), 0.380);
-  const obp = Math.min(Math.max(s.obp ?? 0.320, avg + 0.012), 0.500);
-  const slg = Math.max(s.slg ?? 0.400, avg + 0.020);
-  const hrSeason = Math.max(0, s.hr ?? 15);
+  // Regress 35% toward league average — the SAME regression the headline engine applies
+  // (see lineupRunsPerGame): peak cards overstate sustained full-season rates. This keeps
+  // the box score describing the same team as the projection above it.
+  const rAvg = (s.avg ?? 0.260)*0.65 + 0.260*0.35;
+  const rObp = (s.obp ?? 0.320)*0.65 + 0.320*0.35;
+  const rSlg = (s.slg ?? 0.400)*0.65 + 0.405*0.35;
+  const rHr  = (s.hr  ?? 15  )*0.65 + 15*0.35;
+  const avg = Math.min(Math.max(rAvg, 0.150), 0.380);
+  const obp = Math.min(Math.max(rObp, avg + 0.012), 0.500);
+  const slg = Math.max(rSlg, avg + 0.020);
+  const hrSeason = Math.max(0, rHr);
   let pBB = (obp - avg) / (1 - avg);
   pBB = Math.min(Math.max(pBB, 0.02), 0.20);
   const pHit = avg * (1 - pBB);
@@ -7098,7 +7105,7 @@ function simInning(hitters, hStats, probsCache, startIdx) {
   }
   return { nextIdx: idx, runs };
 }
-function runFullSeasonSim(lineup, roster) {
+function runFullSeasonSim(lineup, roster, targetWins = null) {
   const hitters = lineup.filter(Boolean);
   const hStats = hitters.map(p => ({
     id: p.id || p.name,
@@ -7107,6 +7114,23 @@ function runFullSeasonSim(lineup, roster) {
     PA: 0, AB: 0, R: 0, H: 0, D: 0, T: 0, HR: 0, RBI: 0, BB: 0, SO: 0,
   }));
   const probsCache = hitters.map(p => paProbs(p));
+  // Anchor team scoring to the headline R/G (which carries the analytic engine's
+  // diminishing returns): estimate this lineup's emergent rate with a quick burn-in,
+  // then scale event probabilities gently so both screens describe one offense.
+  const offTarget = lineupRunsPerGame(hitters).rpg || 4.3;
+  let est = 0;
+  { const tmp = hitters.map(()=>({PA:0,AB:0,R:0,H:0,D:0,T:0,HR:0,RBI:0,BB:0,SO:0}));
+    let ix = 0; const N = 220;
+    for (let i=0;i<N;i++){ const r = simInning(hitters,tmp,probsCache,ix); ix=r.nextIdx; est+=r.runs; }
+    est = est/N*8; }
+  const kOff = Math.max(0.8, Math.min(1.25, offTarget/Math.max(0.5, est)));
+  const mOff = Math.pow(kOff, 0.56); // runs scale ~superlinearly with on-base events
+  probsCache.forEach(pr => {
+    pr.pHR*=mOff; pr.p3B*=mOff; pr.p2B*=mOff; pr.p1B*=mOff; pr.pBB*=mOff;
+    const tot = pr.pBB+pr.p1B+pr.p2B+pr.p3B+pr.pHR;
+    if (tot > 0.60) { const f=0.60/tot; pr.pHR*=f;pr.p3B*=f;pr.p2B*=f;pr.p1B*=f;pr.pBB*=f; }
+    pr.pSO = Math.min(pr.pSO, Math.max(0, 1-(pr.pBB+pr.p1B+pr.p2B+pr.p3B+pr.pHR))*0.92);
+  });
   const spKeys = ['sp1','sp2','sp3','sp4','sp5'].filter(k => roster[k]);
   const rpKeys = ['rp1','rp2','rp3','rp4'].filter(k => roster[k]);
   const spList = spKeys.map(k => roster[k]);
@@ -7120,15 +7144,25 @@ function runFullSeasonSim(lineup, roster) {
       W: 0, L: 0, SV: 0, G: 0, GS: 0, IP: 0, H: 0, R: 0, ER: 0, BB: 0, SO: 0, _p: p,
     };
   });
+  // Calibrate opponent scoring to the SAME staff number the headline uses
+  // (regression + defense + diminishing returns), so both describe one team.
+  // Individual pitchers keep their relative quality; the team level matches.
+  const staffTarget = staffRunsAllowedPerGame(spList, rpList, hitters).ra;
+  const ra9 = p => p ? pitcherRA9(p) : 4.30;
+  const meanSP = spList.length ? spList.reduce((s,p)=>s+ra9(p),0)/spList.length : 4.30;
+  const meanRP = rpList.length ? rpList.reduce((s,p)=>s+ra9(p),0)/rpList.length : 4.10;
+  const naive = (6*meanSP + 2*meanRP)/8;
+  const kPitch = (staffTarget/Math.max(0.1, naive)) * (9/8); // 8 defensive innings/game carry a full game's RA
   const spRotation = spList.length > 0 ? spList : [null];
+  const games = [];
   let spTurn = 0;
   for (let g = 0; g < 162; g++) {
     const sp = spRotation[spTurn % spRotation.length];
     spTurn++;
     const spKey = sp ? (sp.id || sp.name) : null;
     if (spKey) { pStats[spKey].G++; pStats[spKey].GS++; }
-    let teamRuns = 0, oppRuns = 0;
-    let idx = 0;
+    let teamRuns = 0, idx = 0;
+    const innLog = [];
     const inningsThisGame = 8; // ~8 batting innings/game -> realistic PA totals
     for (let inn = 0; inn < inningsThisGame; inn++) {
       const off = simInning(hitters, hStats, probsCache, idx);
@@ -7138,34 +7172,52 @@ function runFullSeasonSim(lineup, roster) {
       if (inn < 6 && sp) ourPitcher = sp;
       else if (rpList.length > 0) ourPitcher = rpList[Math.floor(Math.random() * rpList.length)];
       else ourPitcher = sp;
-      const pitRA = ourPitcher
-        ? ((ourPitcher.stats?.fip || 4.2) * 0.6 + (ourPitcher.stats?.era || 4.2) * 0.4) * (ERA_PITCH_ADJ[ourPitcher.decade] || 1.0)
-        : 4.30;
-      const oppInnRuns = poissonSample(pitRA / 9);
-      oppRuns += oppInnRuns;
+      const r = poissonSample(ra9(ourPitcher) * kPitch / 9);
       const pk = ourPitcher ? (ourPitcher.id || ourPitcher.name) : null;
       if (pk && pStats[pk]) {
         pStats[pk].IP += 1;
-        pStats[pk].R  += oppInnRuns;
-        pStats[pk].ER += oppInnRuns;
+        pStats[pk].R  += r;
+        pStats[pk].ER += r;
         pStats[pk].SO += poissonSample((ourPitcher.stats?.k9 || 7.5) / 9);
         pStats[pk].BB += poissonSample(2.8 / 9);
-        pStats[pk].H  += poissonSample((pitRA * 0.85) / 9);
+        pStats[pk].H  += poissonSample((ra9(ourPitcher) * kPitch * 0.85) / 9);
       }
+      innLog.push({ pk, r });
     }
-    const win = teamRuns > oppRuns;
-    if (spKey) { if (win) pStats[spKey].W++; else pStats[spKey].L++; }
-    if (!win && rpList.length > 0) {
-      const loser = rpList[Math.floor(Math.random() * rpList.length)];
-      const lk = loser.id || loser.name;
-      if (lk && pStats[lk]) pStats[lk].L++;
-    }
-    if (win && rpList.length > 0 && teamRuns - oppRuns <= 3) {
-      const closer = rpList[0];
-      const ck = closer.id || closer.name;
-      if (ck && pStats[ck]) pStats[ck].SV++;
+    games.push({ spKey, teamRuns, innLog, opp: innLog.reduce((s,x)=>s+x.r,0) });
+  }
+  // Reconcile to the headline record when provided: flip the closest games so the
+  // box score IS the season shown above it, settling pitcher runs to match.
+  const addOpp = (gm,n) => { const e=gm.innLog[gm.innLog.length-1]; e.r+=n; gm.opp+=n; if(e.pk&&pStats[e.pk]){pStats[e.pk].R+=n;pStats[e.pk].ER+=n;} };
+  const subOpp = (gm,n) => { let left=n; for(const e of gm.innLog){ if(left<=0)break; const take=Math.min(e.r,left); if(take>0){ e.r-=take; gm.opp-=take; left-=take; if(e.pk&&pStats[e.pk]){pStats[e.pk].R-=take;pStats[e.pk].ER-=take;} } } };
+  if (targetWins != null) {
+    const target = Math.max(0, Math.min(162, Math.round(targetWins)));
+    const natural = games.filter(g=>g.teamRuns>g.opp).length;
+    if (natural > target) {
+      const wins = games.filter(g=>g.teamRuns>g.opp).sort((a,b)=>(a.teamRuns-a.opp)-(b.teamRuns-b.opp));
+      for (let i=0;i<natural-target&&i<wins.length;i++){ const gm=wins[i]; addOpp(gm,(gm.opp<gm.teamRuns?(gm.teamRuns-gm.opp):0)+1); }
+    } else if (natural < target) {
+      const losses = games.filter(g=>g.teamRuns<=g.opp&&g.teamRuns>=1).sort((a,b)=>(a.opp-a.teamRuns)-(b.opp-b.teamRuns));
+      for (let i=0;i<target-natural&&i<losses.length;i++){ const gm=losses[i]; subOpp(gm,(gm.opp-gm.teamRuns)+1); }
     }
   }
+  // Exactly one decision per game; relievers can vulture wins and take losses.
+  games.forEach(gm => {
+    const win = gm.teamRuns > gm.opp;
+    const rpInGame = [...new Set(gm.innLog.slice(6).map(e=>e.pk).filter(k=>k&&pStats[k]&&pStats[k].role==='RP'))];
+    const pickRP = () => rpInGame.length ? rpInGame[Math.floor(Math.random()*rpInGame.length)] : null;
+    if (win) {
+      const k = (gm.spKey && Math.random() < 0.72) ? gm.spKey : (pickRP() || gm.spKey);
+      if (k && pStats[k]) pStats[k].W++;
+      if (rpList.length > 0 && gm.teamRuns - gm.opp <= 3) {
+        const ck = rpList[0].id || rpList[0].name;
+        if (pStats[ck]) pStats[ck].SV++;
+      }
+    } else {
+      const k = (gm.spKey && Math.random() < 0.62) ? gm.spKey : (pickRP() || gm.spKey);
+      if (k && pStats[k]) pStats[k].L++;
+    }
+  });
   const pitcherList = Object.values(pStats).map(ps => {
     const ip = Math.max(ps.IP, 1);
     ps.ERA  = Math.round((ps.ER / ip * 9) * 100) / 100;
@@ -7179,7 +7231,6 @@ function runFullSeasonSim(lineup, roster) {
   });
   return { hitters: hStats, pitchers: pitcherList };
 }
-
 function poissonSample(lambda) {
   if (lambda <= 0) return 0;
   const L = Math.exp(-lambda);
@@ -7363,7 +7414,7 @@ function ResultsScreen({result,roster,lineup,onReset,onShare,onReplay}){
     setSimRunning(true);
     setTimeout(()=>{
       try{
-        const bs=runFullSeasonSim(lineup.filter(Boolean),roster);
+        const bs=runFullSeasonSim(lineup.filter(Boolean),roster,result.wins);
         setBoxScore(bs);
       }catch(e){console.error('BoxScore sim error:',e);}
       setSimRunning(false);
@@ -7527,7 +7578,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v6 — records & stats now driven by roster quality + season form
+// FRANCHISE MODE v8 — season awards, postseason polish, team records
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -7650,13 +7701,36 @@ function frStandings(fr){
   Object.values(g).forEach(d=>d.sort((a,b)=>(b.w-b.l)-(a.w-a.l)||b.w-a.w));
   return g;
 }
-// Playoff field per league: 3 division winners + 2 wild cards.
-function frPlayoffSeeds(fr,league){
+// ── PLAYOFFS: 12-team bracket (3 division winners + 3 wild cards per league) ──
+const FR_PO_STAGES=['Wild Card Series','Division Series','League Championship Series','World Series'];
+function frPlayoffField(fr,league){
   const st=frStandings(fr),winners=[],pool=[];
-  ['East','Central','West'].forEach(dv=>{const d=st[league+'|'+dv];if(d&&d.length){winners.push(d[0].id);d.slice(1).forEach(t=>pool.push(t));}});
-  pool.sort((a,b)=>(b.w-b.l)-(a.w-a.l)||b.w-a.w);
-  const wc=pool.slice(0,2).map(t=>t.id);
-  return new Set([...winners,...wc]);
+  ['East','Central','West'].forEach(dv=>{const d=st[league+'|'+dv];if(d&&d.length){winners.push(d[0]);d.slice(1).forEach(t=>pool.push(t));}});
+  const by=(a,b)=>(b.w-b.l)-(a.w-a.l)||b.w-a.w;
+  winners.sort(by);pool.sort(by);
+  return [...winners.slice(0,3),...pool.slice(0,3)].map((t,i)=>({id:t.id,seed:i+1,w:t.w,l:t.l,div:i<3}));
+}
+function frPlayoffSeeds(fr,league){return new Set(frPlayoffField(fr,league).map(s=>s.id));}
+function frSeriesHome(bestOf){return bestOf===3?[1,1,1]:bestOf===5?[1,1,0,0,1]:[1,1,0,0,0,1,1];}
+function frPlayWpct(fr,id){const r=fr.teams[id].record,g=r.w+r.l;if(!g)return 0.5;const raw=Math.max(0.30,Math.min(0.70,r.w/g));return 0.5+(raw-0.5)*0.7;}
+function frSimSeries(fr,hi,lo,bestOf){
+  const HFA=0.035,need=Math.ceil(bestOf/2),sh=frPlayWpct(fr,hi.id),sl=frPlayWpct(fr,lo.id);
+  const base=(sh*(1-sl))/((sh*(1-sl))+(sl*(1-sh))),home=frSeriesHome(bestOf);
+  let hw=0,lw=0,g=0;
+  while(hw<need&&lw<need&&g<bestOf){const pHi=Math.max(0.05,Math.min(0.95,base+(home[g]?HFA:-HFA)));if(Math.random()<pHi)hw++;else lw++;g++;}
+  const hiWon=hw>lw;
+  return {hi,lo,bestOf,hiWins:hw,loWins:lw,winner:hiWon?hi:lo,loser:hiWon?lo:hi,done:true};
+}
+function frInitPlayoffs(fr){return {season:fr.season,seeds:{AL:frPlayoffField(fr,'AL'),NL:frPlayoffField(fr,'NL')},stage:0,wc:null,ds:null,lcs:null,ws:null,champion:null};}
+function frAdvancePlayoffs(fr){
+  const po={...(fr.playoffs||frInitPlayoffs(fr))};
+  const ord=(a,b)=>a.seed<=b.seed?[a,b]:[b,a];
+  const ser=(a,b,bo)=>{const[h,l]=ord(a,b);return frSimSeries(fr,h,l,bo);};
+  if(po.stage===0){po.wc={};['AL','NL'].forEach(lg=>{const sd=po.seeds[lg];po.wc[lg]=[ser(sd[2],sd[5],3),ser(sd[3],sd[4],3)];});po.stage=1;}
+  else if(po.stage===1){po.ds={};['AL','NL'].forEach(lg=>{const sd=po.seeds[lg];po.ds[lg]=[ser(sd[0],po.wc[lg][1].winner,5),ser(sd[1],po.wc[lg][0].winner,5)];});po.stage=2;}
+  else if(po.stage===2){po.lcs={};['AL','NL'].forEach(lg=>{po.lcs[lg]=ser(po.ds[lg][0].winner,po.ds[lg][1].winner,7);});po.stage=3;}
+  else if(po.stage===3){const a=po.lcs.AL.winner,b=po.lcs.NL.winner,ra=fr.teams[a.id].record,rb=fr.teams[b.id].record;const[h,l]=((ra.w-ra.l)>=(rb.w-rb.l))?[a,b]:[b,a];po.ws=frSimSeries(fr,h,l,7);po.champion=po.ws.winner.id;po.stage=4;}
+  return po;
 }
 
 
@@ -7771,6 +7845,20 @@ function frUpdateRecords(prev,allHit,allPit,season){
   return {hitting:{hr:frMergeRec(h.hr,allHit,'hr',false,null,season),rbi:frMergeRec(h.rbi,allHit,'rbi',false,null,season),r:frMergeRec(h.r,allHit,'r',false,null,season),h:frMergeRec(h.h,allHit,'h',false,null,season),sb:frMergeRec(h.sb,allHit,'sb',false,null,season),avg:frMergeRec(h.avg,allHit,'avg',false,qH,season),ops:frMergeRec(h.ops,allHit,'ops',false,qH,season),war:frMergeRec(h.war,allHit,'war',false,null,season)},
           pitching:{w:frMergeRec(p.w,allPit,'w',false,l=>l.line.role==='SP',season),era:frMergeRec(p.era,allPit,'era',true,qP,season),so:frMergeRec(p.so,allPit,'so',false,null,season),sv:frMergeRec(p.sv,allPit,'sv',false,null,season),whip:frMergeRec(p.whip,allPit,'whip',true,qP,season),war:frMergeRec(p.war,allPit,'war',false,null,season)}};
 }
+function frAwards(allHit,allPit){
+  const lg={};MLB_TEAMS.forEach(t=>lg[t.id]=t.league);
+  const pick=(arr,score)=>arr.reduce((b,x)=>(!b||score(x)>score(b))?x:b,null);
+  const out={};
+  ['AL','NL'].forEach(L=>{
+    const h=allHit.filter(x=>lg[x.teamId]===L),p=allPit.filter(x=>lg[x.teamId]===L);
+    const mvp=pick(h,x=>x.line.war*100+(x.line.ops||0));
+    const cy=pick(p,x=>x.line.war*100-(x.line.era||9)*0.1+(x.line.so||0)*0.001);
+    out[L]={mvp:mvp?{name:mvp.name,teamId:mvp.teamId,war:mvp.line.war,avg:mvp.line.avg,hr:mvp.line.hr,rbi:mvp.line.rbi}:null,
+            cy:cy?{name:cy.name,teamId:cy.teamId,war:cy.line.war,w:cy.line.w,l:cy.line.l,era:cy.line.era,so:cy.line.so}:null};
+  });
+  return out;
+}
+
 function frGenerateSeasonStats(fr){
   const season=fr.season,allHit=[],allPit=[],teams={};
   Object.entries(fr.teams).forEach(([tid,team])=>{
@@ -7781,8 +7869,9 @@ function frGenerateSeasonStats(fr){
     teams[tid]={...team,roster:ros};
   });
   const leaders=frComputeLeaders(allHit,allPit);
+  const awards=frAwards(allHit,allPit);
   const standings=MLB_TEAMS.map(t=>({id:t.id,w:fr.teams[t.id].record.w,l:fr.teams[t.id].record.l}));
-  const history=[...(fr.history||[]),{season,leaders,standings}];
+  const history=[...(fr.history||[]),{season,leaders,standings,awards}];
   const records=frUpdateRecords(fr.records,allHit,allPit,season);
   return {...fr,teams,history,records,statsGenerated:season};
 }
@@ -7855,9 +7944,26 @@ function FranchiseScreen({players,onExit}){
       const nf=frGenerateSeasonStats(fr);saveFranchise(nf);setFr(nf);
     }
   },[fr]);
+  function poPatch(f,po){
+    if(!po.champion)return f;
+    return {...f,history:(f.history||[]).map(h=>h.season===po.season?{...h,champion:po.champion,runnerUp:po.ws.loser.id}:h)};
+  }
+  function doSimPO(){
+    let f=fr;if(f.statsGenerated!==f.season){f=frGenerateSeasonStats(f);}
+    const po=frAdvancePlayoffs(f);
+    const nf=poPatch({...f,playoffs:po},po);
+    saveFranchise(nf);setFr(nf);
+  }
+  function doSimPOAll(){
+    let f=fr;if(f.statsGenerated!==f.season){f=frGenerateSeasonStats(f);}
+    let po=f.playoffs||frInitPlayoffs(f);
+    while(po.stage<4){po=frAdvancePlayoffs({...f,playoffs:po});}
+    const nf=poPatch({...f,playoffs:po},po);
+    saveFranchise(nf);setFr(nf);
+  }
   function nextSeason(){
     const teams={};Object.entries(fr.teams).forEach(([id,t])=>teams[id]={...t,record:{w:0,l:0}});
-    const nf={...fr,season:fr.season+1,gamesPlayed:0,teams};saveFranchise(nf);setFr(nf);setSimN(10);setView('home');
+    const nf={...fr,season:fr.season+1,gamesPlayed:0,teams,playoffs:null};saveFranchise(nf);setFr(nf);setSimN(10);setView('home');
   }
 
   const card={background:'rgba(8,16,32,0.8)',border:'1px solid #0f1f35',borderRadius:12};
@@ -8037,7 +8143,7 @@ function FranchiseScreen({players,onExit}){
     const pitCats=[['Wins','w',0],['ERA','era',2],['Strikeouts','so',0],['Saves','sv',0],['WHIP','whip',2],['Innings','ip',1],['WAR','war',1]];
     const Block=(cats,side)=>(<div style={{...card,padding:'12px 14px'}}>
       <div style={{fontSize:11,letterSpacing:2,color:side==='h'?'#60a5fa':'#a78bfa',fontWeight:800,marginBottom:8}}>{side==='h'?'HITTING':'PITCHING'}</div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'12px 16px'}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(195px,1fr))',gap:'12px 16px'}}>
       {cats.map(c=>{const rows=(side==='h'?L.hitting:L.pitching)[c[1]]||[];return (<div key={c[1]}>
         <div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:3,borderBottom:'1px solid #1e3a5f',paddingBottom:2}}>{c[0]}</div>
         {rows.slice(0,5).map((r,i)=>(<div key={i} style={{display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}>
@@ -8054,6 +8160,15 @@ function FranchiseScreen({players,onExit}){
         <span style={{fontSize:11,color:'#475569',fontWeight:800,marginRight:2}}>SEASON</span>
         {seasons.map(ss=>(<button key={ss} onClick={()=>setLeadSeason(ss)} style={navTab(ss===cur)}>{ss}</button>))}
       </div>
+      {entry.awards&&(()=>{const A=entry.awards;const TN=id=>{const t=MLB_TEAMS.find(x=>x.id===id);return t?t.name:id;};
+        const cell=(title,a,kind)=>a?(<div key={title}><div style={{fontSize:9,letterSpacing:1,color:'#94a3b8',fontWeight:800,marginBottom:2}}>{title}</div>
+          <div style={{fontSize:13,fontWeight:800,color:a.teamId===fr.userTeamId?'#f59e0b':'#e2e8f0',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.name}</div>
+          <div style={{fontSize:10,color:'#64748b'}}>{TN(a.teamId)} · {kind==='h'?(fmt(a.avg,3)+' · '+a.hr+' HR · '+a.war+' WAR'):(a.w+'-'+a.l+' · '+(+a.era).toFixed(2)+' ERA · '+a.war+' WAR')}</div></div>):null;
+        return (<div style={{...card,padding:'12px 14px',marginBottom:14,borderColor:'rgba(245,158,11,0.35)'}}>
+          <div style={{fontSize:10,letterSpacing:2,color:'#fbbf24',fontWeight:800,marginBottom:8}}>🏅 SEASON {cur} AWARDS</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(165px,1fr))',gap:'10px 16px'}}>
+            {cell('AL MVP',A.AL&&A.AL.mvp,'h')}{cell('NL MVP',A.NL&&A.NL.mvp,'h')}{cell('AL CY YOUNG',A.AL&&A.AL.cy,'p')}{cell('NL CY YOUNG',A.NL&&A.NL.cy,'p')}
+          </div></div>);})()}
       <div style={{display:'grid',gridTemplateColumns:'1fr',gap:14}}>{Block(hitCats,'h')}{Block(pitCats,'p')}</div>
     </div></div>);
   }
@@ -8067,7 +8182,7 @@ function FranchiseScreen({players,onExit}){
     const pitCats=[['Wins','w',0],['ERA','era',2],['Strikeouts','so',0],['Saves','sv',0],['WHIP','whip',2],['WAR','war',1]];
     const Block=(cats,side)=>(<div style={{...card,padding:'12px 14px'}}>
       <div style={{fontSize:11,letterSpacing:2,color:side==='h'?'#60a5fa':'#a78bfa',fontWeight:800,marginBottom:8}}>{side==='h'?'HITTING — SINGLE SEASON':'PITCHING — SINGLE SEASON'}</div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:'12px 16px'}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:'12px 16px'}}>
       {cats.map(c=>{const rows=(side==='h'?R.hitting:R.pitching)[c[1]]||[];return (<div key={c[1]}>
         <div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:3,borderBottom:'1px solid #1e3a5f',paddingBottom:2}}>{c[0]}</div>
         {rows.slice(0,5).map((r,i)=>(<div key={i} style={{display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}>
@@ -8080,8 +8195,64 @@ function FranchiseScreen({players,onExit}){
         <div className="serif" style={{fontSize:24,fontWeight:900,color:'#f59e0b',fontFamily:'Georgia,serif'}}>All-Time Records</div>
         <div style={{width:64}}></div>
       </div>
-      <div style={{fontSize:11,color:'#475569',marginBottom:12}}>Best individual single-season performances in franchise history. Year shown next to each.</div>
+      <div style={{fontSize:11,color:'#475569',marginBottom:12}}>Best individual single-season performances in franchise history. Year shown next to each.</div>{(()=>{const champs=(fr.history||[]).filter(h=>h.champion).slice().reverse();if(!champs.length)return null;return (<div style={{...card,padding:'12px 14px',marginBottom:14}}><div style={{fontSize:11,letterSpacing:2,color:'#fbbf24',fontWeight:800,marginBottom:8}}>🏆 WORLD SERIES CHAMPIONS</div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'3px 16px'}}>{champs.map(h=>{const t=MLB_TEAMS.find(x=>x.id===h.champion);const me=h.champion===fr.userTeamId;return (<div key={h.season} style={{display:'flex',fontSize:12,padding:'2px 0',color:me?'#f59e0b':'#cbd5e1',fontWeight:me?800:500}}><span style={{color:'#64748b',width:34}}>'{String(h.season).padStart(2,'0')}</span><span style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{me?'✦ ':''}{t?t.city+' '+t.name:h.champion}</span></div>);})}</div></div>);})()}{(()=>{const rows=[];(fr.history||[]).forEach(h=>{(h.standings||[]).forEach(x=>rows.push({season:h.season,id:x.id,w:x.w,l:x.l}));});
+      if(!rows.length)return null;
+      const best=[...rows].sort((a,b)=>b.w-a.w||a.l-b.l).slice(0,5);
+      const worst=[...rows].sort((a,b)=>a.w-b.w||b.l-a.l).slice(0,5);
+      const Row=r=>{const t=MLB_TEAMS.find(x=>x.id===r.id);const me=r.id===fr.userTeamId;return (<div key={r.id+'-'+r.season} style={{display:'flex',fontSize:11,padding:'1.5px 0',color:me?'#f59e0b':'#cbd5e1',fontWeight:me?700:400}}><span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t?t.city+' '+t.name:r.id}</span><span style={{color:'#64748b',fontSize:9,width:26}}>{"'"+String(r.season).padStart(2,'0')}</span><span style={{fontFamily:'monospace',width:52,textAlign:'right'}}>{r.w}-{r.l}</span></div>);};
+      return (<div style={{...card,padding:'12px 14px',marginBottom:14}}>
+      <div style={{fontSize:11,letterSpacing:2,color:'#86efac',fontWeight:800,marginBottom:8}}>TEAM SEASONS</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'12px 18px'}}>
+        <div><div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:3,borderBottom:'1px solid #1e3a5f',paddingBottom:2}}>Best Records</div>{best.map(Row)}</div>
+        <div><div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:3,borderBottom:'1px solid #1e3a5f',paddingBottom:2}}>Worst Records</div>{worst.map(Row)}</div>
+      </div></div>);})()}
       <div style={{display:'grid',gridTemplateColumns:'1fr',gap:14}}>{Block(hitCats,'h')}{Block(pitCats,'p')}</div>
+    </div></div>);
+  }
+
+  if(view==='playoffs'){
+    const po=fr.playoffs;
+    const TM=id=>{const t=MLB_TEAMS.find(x=>x.id===id);return t?t.city+' '+t.name:id;};
+    const NM=id=>{const t=MLB_TEAMS.find(x=>x.id===id);return t?t.name:id;};
+    const isMe=id=>id===fr.userTeamId;
+    if(!po) return (<div style={wrap}><div style={{maxWidth:780,margin:'0 auto'}}><button style={ghost} onClick={()=>setView('home')}>← Back</button><div style={{...card,padding:40,textAlign:'center',color:'#475569',marginTop:12}}>The postseason bracket appears once the regular season is complete.</div></div></div>);
+    const TeamLine=(sd,wins,won)=>(<div style={{display:'flex',alignItems:'center',padding:'4px 8px',borderRadius:5,background:won?'rgba(34,197,94,0.10)':'transparent'}}>
+      <span style={{width:16,fontSize:9,color:'#475569',fontWeight:800}}>{sd.seed}</span>
+      <span style={{flex:1,fontSize:12,fontWeight:won?800:500,color:isMe(sd.id)?'#f59e0b':(won?'#e2e8f0':'#94a3b8'),whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TM(sd.id)}</span>
+      <span style={{fontFamily:'monospace',fontWeight:800,fontSize:13,width:16,textAlign:'right',color:won?'#22c55e':'#64748b'}}>{wins}</span></div>);
+    const Series=(sr)=>{const hiWon=sr.winner.id===sr.hi.id;return (<div style={{...card,padding:'4px 4px',marginBottom:8,borderColor:(isMe(sr.hi.id)||isMe(sr.lo.id))?'rgba(245,158,11,0.6)':'#0f1f35'}}>{TeamLine(sr.hi,sr.hiWins,hiWon)}{TeamLine(sr.lo,sr.loWins,!hiWon)}</div>);};
+    const Round=(name,al,nl)=>(<div style={{marginBottom:14}}>
+      <div style={{fontSize:10,letterSpacing:2,color:'#94a3b8',fontWeight:800,marginBottom:6}}>{name}</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+        <div><div style={{fontSize:8,color:'#475569',fontWeight:800,marginBottom:4,letterSpacing:1}}>AMERICAN</div>{al}</div>
+        <div><div style={{fontSize:8,color:'#475569',fontWeight:800,marginBottom:4,letterSpacing:1}}>NATIONAL</div>{nl}</div>
+      </div></div>);
+    const SeedPanel=lg=>(<div><div style={{fontSize:8,color:'#475569',fontWeight:800,marginBottom:4,letterSpacing:1}}>{lg==='AL'?'AMERICAN':'NATIONAL'}</div>
+      {po.seeds[lg].map(sd=>(<div key={sd.id} style={{display:'flex',alignItems:'center',padding:'2.5px 8px',fontSize:11,color:isMe(sd.id)?'#f59e0b':'#cbd5e1',fontWeight:isMe(sd.id)?700:400}}>
+        <span style={{width:16,color:'#475569',fontWeight:800}}>{sd.seed}</span><span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TM(sd.id)}</span>
+        <span style={{fontFamily:'monospace',width:46,textAlign:'right',color:'#64748b'}}>{sd.w}-{sd.l}</span>
+        <span style={{fontSize:8,width:30,textAlign:'right',color:sd.seed<=2?'#22c55e':'#475569',fontWeight:800}}>{sd.seed<=2?'BYE':(sd.div?'':'WC')}</span></div>))}
+    </div>);
+    return (<div style={wrap}><div style={{maxWidth:780,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+        <button style={ghost} onClick={()=>setView('home')}>← Back</button>
+        <div className="serif" style={{fontSize:23,fontWeight:900,color:'#f59e0b',fontFamily:'Georgia,serif'}}>Season {po.season} Postseason</div>
+        <div style={{width:64}}></div>
+      </div>
+      {po.stage<4
+        ? <div style={{textAlign:'center',marginBottom:16}}><button onClick={doSimPO} style={{...gold,padding:'12px 30px',fontSize:14}}>Simulate {FR_PO_STAGES[po.stage]} →</button><button onClick={doSimPOAll} style={{background:'rgba(245,158,11,0.1)',border:'1px solid #f59e0b',color:'#f59e0b',borderRadius:8,padding:'12px 18px',cursor:'pointer',fontWeight:800,fontSize:12,marginLeft:8}}>Sim to Champion ⏩</button><div style={{fontSize:10,color:'#334155',marginTop:6}}>Higher seed has home-field advantage · upsets happen</div></div>
+        : <div style={{...card,padding:'16px 18px',marginBottom:16,textAlign:'center',borderColor:'#f59e0b',background:'rgba(245,158,11,0.06)'}}>
+            <div style={{fontSize:10,letterSpacing:2,color:'#94a3b8',fontWeight:800}}>WORLD SERIES CHAMPIONS</div>
+            <div className="serif" style={{fontSize:29,fontWeight:900,color:'#f59e0b',fontFamily:'Georgia,serif',margin:'2px 0'}}>🏆 {TM(po.champion)}</div>
+            {po.champion===fr.userTeamId&&<div style={{fontSize:12,color:'#fbbf24',fontWeight:800,letterSpacing:2,margin:'2px 0'}}>YOUR FRANCHISE WINS IT ALL</div>}
+            <div style={{fontSize:11,color:'#64748b'}}>def. {NM(po.ws.loser.id)} · {Math.max(po.ws.hiWins,po.ws.loWins)}-{Math.min(po.ws.hiWins,po.ws.loWins)}</div>
+            <button onClick={nextSeason} style={{...gold,padding:'10px 24px',fontSize:13,marginTop:10}}>Begin Season {fr.season+1} →</button>
+          </div>}
+      {!po.wc&&(<div style={{marginBottom:14}}><div style={{fontSize:10,letterSpacing:2,color:'#94a3b8',fontWeight:800,marginBottom:6}}>THE FIELD</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>{SeedPanel('AL')}{SeedPanel('NL')}</div></div>)}
+      {po.wc&&Round('WILD CARD · best of 3',po.wc.AL.map((sr,i)=><div key={i}>{Series(sr)}</div>),po.wc.NL.map((sr,i)=><div key={i}>{Series(sr)}</div>))}
+      {po.ds&&Round('DIVISION SERIES · best of 5',po.ds.AL.map((sr,i)=><div key={i}>{Series(sr)}</div>),po.ds.NL.map((sr,i)=><div key={i}>{Series(sr)}</div>))}
+      {po.lcs&&Round('LEAGUE CHAMPIONSHIP · best of 7',[<div key="a">{Series(po.lcs.AL)}</div>],[<div key="n">{Series(po.lcs.NL)}</div>])}
+      {po.ws&&(<div style={{marginBottom:14}}><div style={{fontSize:10,letterSpacing:2,color:'#f59e0b',fontWeight:800,marginBottom:6,textAlign:'center'}}>WORLD SERIES · best of 7</div><div style={{maxWidth:340,margin:'0 auto'}}>{Series(po.ws)}</div></div>)}
     </div></div>);
   }
 
@@ -8108,7 +8279,7 @@ function FranchiseScreen({players,onExit}){
     <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:14}}>
       <div><div style={{fontSize:11,letterSpacing:2,color:'#475569',fontWeight:800}}>SEASON {fr.season} OF {fr.franchiseLength} · {meInfo.league} {meInfo.division}</div>
         <div className="serif" style={{fontSize:36,fontWeight:900,color:'#f59e0b',letterSpacing:'-1px',fontFamily:'Georgia,serif',lineHeight:1.1}}>{meInfo.city} {meInfo.name}</div>
-        <div style={{fontSize:13,color:'#94a3b8',marginTop:2,fontFamily:'monospace'}}>{fr.teams[fr.userTeamId].record.w}-{fr.teams[fr.userTeamId].record.l}</div></div>
+        <div style={{fontSize:13,color:'#94a3b8',marginTop:2,fontFamily:'monospace'}}>{fr.teams[fr.userTeamId].record.w}-{fr.teams[fr.userTeamId].record.l}</div>{(()=>{const lc=(fr.history||[]).filter(h=>h.champion).slice(-1)[0];if(lc&&lc.season===fr.season-1){const t=MLB_TEAMS.find(x=>x.id===lc.champion);return (<div style={{fontSize:10,color:'#fbbf24',fontWeight:700,marginTop:3}}>★ Defending champions: {t?t.name:''}{lc.champion===fr.userTeamId?' (you)':''}</div>);}return null;})()}</div>
       <div style={{display:'flex',gap:8}}><button onClick={startOver} style={{background:'transparent',border:'1px solid #7f1d1d',color:'#f87171',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:12,fontWeight:700}}>Start Over</button><button onClick={onExit} style={ghost}>← Menu</button></div>
     </div>
 
@@ -8127,9 +8298,13 @@ function FranchiseScreen({players,onExit}){
         </div>
         {seasonDone?
           <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',justifyContent:'flex-end'}}>
-            <div style={{fontSize:11,color:'#94a3b8',maxWidth:200,textAlign:'right',lineHeight:1.4}}>Season {fr.statsGenerated||fr.season} complete. Leaders &amp; records updated.</div>
-            <button onClick={()=>{setLeadSeason(fr.statsGenerated||fr.season);setView('leaders');}} style={simGhost}>League Leaders</button>
-            <button onClick={nextSeason} style={simBtn}>Begin Season {fr.season+1} →</button>
+            {(fr.playoffs&&fr.playoffs.champion)
+              ?<div style={{fontSize:12,textAlign:'right',lineHeight:1.3}}><span style={{color:'#94a3b8',fontSize:10,letterSpacing:1}}>WORLD SERIES</span><br/><span style={{color:'#f59e0b',fontWeight:800}}>🏆 {MLB_TEAMS.find(t=>t.id===fr.playoffs.champion).name}</span></div>
+              :<div style={{fontSize:11,color:'#94a3b8',maxWidth:180,textAlign:'right',lineHeight:1.4}}>{fr.playoffs?('Postseason underway · '+FR_PO_STAGES[Math.min(fr.playoffs.stage,3)]):'Regular season complete. The bracket is set.'}</div>}
+            {(fr.playoffs&&fr.playoffs.champion)?<button onClick={()=>setView('playoffs')} style={simGhost}>View Bracket</button>:null}
+            {(fr.playoffs&&fr.playoffs.champion)
+              ?<button onClick={nextSeason} style={simBtn}>Begin Season {fr.season+1} →</button>
+              :<button onClick={()=>{if(!fr.playoffs){const nf={...fr,playoffs:frInitPlayoffs(fr)};saveFranchise(nf);setFr(nf);}setView('playoffs');}} style={simBtn}>{fr.playoffs?'Continue Postseason →':'🏆 Enter Postseason →'}</button>}
           </div>
         :<div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
           <input type="number" min="1" max={FR_SEASON_GAMES-gp} value={simN} onChange={e=>setSimN(Math.max(1,Math.min(FR_SEASON_GAMES-gp,parseInt(e.target.value)||1)))} style={{width:64,padding:'9px 8px',background:'#0a1424',border:'1px solid #1e3a5f',borderRadius:8,color:'#e2e8f0',fontSize:13,fontWeight:700,textAlign:'center'}}/>
@@ -8164,6 +8339,8 @@ function FranchiseScreen({players,onExit}){
     <div style={{textAlign:'center',marginTop:14,fontSize:11,color:'#334155'}}>Franchise saved on this device · auto-loads when you return</div>
   </div></div>);
 }
+
+
 
 export default function App(){
   const [screen,setScreen]=useState('home');
