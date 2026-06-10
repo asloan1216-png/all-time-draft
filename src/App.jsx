@@ -7578,7 +7578,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v10 — Hall of Fame & career records
+// FRANCHISE MODE v10.1 — Hall of Fame, career records & free-agency fixes
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -7679,12 +7679,9 @@ function frBuildOffseason(fr,playersAll){
     teams[tid]={...t,roster:ros};
   });
   retirees.sort((a,b)=>((b.teamId===fr.userTeamId)-(a.teamId===fr.userTeamId))||(((b.career&&b.career.war)||0)-((a.career&&a.career.war)||0)));
-  const taken=new Set(retiredNames);
-  Object.values(teams).forEach(t=>FR_ALL_SLOTS.forEach(sl=>{if(t.roster[sl])taken.add(t.roster[sl].name);}));
-  const avail=frDedupPool(playersAll).filter(p=>!taken.has(p.name)).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
-  const faAges={};const market=avail.slice(0,320).map(p=>{faAges[p.name]=23+Math.floor(frRnd()*7);return p.name;});
-  return {...fr,teams,retiredNames,offseason:{stage:'retire',season:fr.season,retirees,market,faAges,signedLog:[]}};
+  return {...fr,teams,retiredNames,offseason:{stage:'retire',season:fr.season,retirees,signedLog:[]}};
 }
+function frDebutAge(name,season){let h=0;for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;return 23+((h+(season||0)*7)%7);}
 function frSlotFits(p,sl){
   if(FR_SP_SLOTS.includes(sl))return p.type==='pitcher'&&p.role==='SP';
   if(FR_RP_SLOTS.includes(sl))return p.type==='pitcher'&&p.role==='RP';
@@ -7708,7 +7705,7 @@ function frFillVacancies(fr,playersAll,teamIds){
       if(idx<0)idx=avail.findIndex(p=>(FR_HIT_SLOTS.includes(sl)?p.type==='hitter':p.type==='pitcher'));
       if(idx<0)return;
       const p=avail[idx];avail=avail.filter((_,i)=>i!==idx);
-      const age=(os.faAges&&os.faAges[p.name])||(23+Math.floor(frRnd()*7));
+      const age=frDebutAge(p.name,fr.season);
       ros[sl]=frSignCompact(p,sl,age);
       signedLog.push({teamId:tid,name:p.name,age,slot:sl});
     });
@@ -8294,9 +8291,10 @@ function FranchiseScreen({players,onExit}){
     const byName=(()=>{const m={};players.forEach(p=>{const cur=m[p.name];if(!cur||((p.avgWARperYear||0)>(cur.avgWARperYear||0)))m[p.name]=p;});return m;})();
     const takenNow=new Set(fr.retiredNames||[]);Object.values(fr.teams).forEach(t=>FR_ALL_SLOTS.forEach(sl=>{if(t.roster[sl])takenNow.add(t.roster[sl].name);}));
     const selSlot=myVac.includes(faSlot)?faSlot:(myVac[0]||null);
-    const cands=selSlot?os.market.map(n=>byName[n]).filter(p=>p&&!takenNow.has(p.name)&&frSlotFits(p,selSlot)).slice(0,28):[];
+    const availAll=Object.values(byName).filter(p=>!takenNow.has(p.name)).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
+    const cands=selSlot?availAll.filter(p=>frSlotFits(p,selSlot)).slice(0,28):[];
     const signFA=(p)=>{
-      const np=frSignCompact(p,selSlot,(os.faAges&&os.faAges[p.name])||(23+Math.floor(frRnd()*7)));
+      const np=frSignCompact(p,selSlot,frDebutAge(p.name,fr.season));
       const teams={...fr.teams,[fr.userTeamId]:{...fr.teams[fr.userTeamId],roster:{...userRoster,[selSlot]:np}}};
       const nf={...fr,teams,offseason:{...os,signedLog:[...(os.signedLog||[]),{teamId:fr.userTeamId,name:p.name,age:np.age,slot:selSlot}]}};
       saveFranchise(nf);setFr(nf);setFaSlot(null);
@@ -8319,12 +8317,15 @@ function FranchiseScreen({players,onExit}){
           {selSlot&&<div>
             <div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:4,borderBottom:'1px solid #1e3a5f',paddingBottom:3}}>TOP FREE AGENTS — {SLOT_LABEL(selSlot)}</div>
             <div style={{maxHeight:340,overflowY:'auto'}}>
-            {cands.map(p=>{const a=os.faAges&&os.faAges[p.name];const st=p.stats||{};return (
+            {cands.map(p=>{const a=frDebutAge(p.name,fr.season);const st=p.stats||{};
+              const ptag=p.type==='pitcher'?(p.role||'P'):((p.eligiblePositions&&p.eligiblePositions[0])||'UT');
+              return (
               <div key={p.name} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,padding:'4px 0',borderBottom:'1px solid #0a1828',color:'#e2e8f0'}}>
+                <span style={{width:26,color:'#86efac',fontSize:9,fontWeight:800,letterSpacing:0.5}}>{ptag}</span>
                 <span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',fontWeight:700}}>{p.name} <span style={{color:'#475569',fontWeight:400,fontSize:10}}>{p.decade}</span></span>
-                <span style={{color:'#94a3b8',fontSize:11,width:48}}>age {a||'?'}</span>
-                <span style={{fontFamily:'monospace',fontSize:11,color:'#94a3b8',width:118,textAlign:'right'}}>{p.type==='hitter'?(((st.avg!=null)?st.avg.toFixed(3).replace(/^0\./,'.'):'—')+' · '+(st.hr||0)+' HR'):(((st.era!=null)?st.era.toFixed(2):'—')+' ERA · '+((st.k9!=null)?st.k9.toFixed(1):'—')+' K/9')}</span>
-                <span style={{fontFamily:'monospace',fontSize:11,color:'#f59e0b',width:54,textAlign:'right'}}>{(p.avgWARperYear||0).toFixed(1)} W</span>
+                <span style={{color:'#94a3b8',fontSize:11,width:48,whiteSpace:'nowrap'}}>age {a}</span>
+                <span style={{fontFamily:'monospace',fontSize:11,color:'#94a3b8',width:134,textAlign:'right',whiteSpace:'nowrap'}}>{p.type==='hitter'?(((st.avg!=null)?st.avg.toFixed(3).replace(/^0\./,'.'):'—')+' · '+(st.hr||0)+' HR'):(((st.era!=null)?st.era.toFixed(2):'—')+' ERA · '+((st.k9!=null)?st.k9.toFixed(1):'—')+' K/9')}</span>
+                <span style={{fontFamily:'monospace',fontSize:11,color:'#f59e0b',width:62,textAlign:'right',whiteSpace:'nowrap'}}>{(p.avgWARperYear||0).toFixed(1)} WAR</span>
                 <button onClick={()=>signFA(p)} style={{background:'#86efac',color:'#04130a',border:'none',borderRadius:6,padding:'5px 12px',fontWeight:800,fontSize:11,cursor:'pointer'}}>Sign</button>
               </div>);})}
             {cands.length===0&&<div style={{color:'#64748b',fontSize:12,padding:'8px 0'}}>No eligible free agents left for this spot — use Auto-fill.</div>}
