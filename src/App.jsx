@@ -7686,7 +7686,7 @@ function FranchiseScreen({players,onExit}){
     return (<div style={wrap}><div style={{maxWidth:1040,margin:'0 auto'}}>
       <div style={{...card,padding:'12px 16px',marginBottom:12,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <div><span style={{fontSize:11,letterSpacing:1,color:'#475569',fontWeight:800}}>ROUND {Math.min(draft.round+1,18)} / 18 · PICK {draft.overall+(draft.done?0:1)} OF 540</span>
-          <div style={{fontSize:18,fontWeight:800,marginTop:2}}>{yourTurn?<span style={{color:'#f59e0b'}}>⚾ YOU ARE ON THE CLOCK</span>:<span>{clock.city} {clock.name} <span style={{color:'#475569'}}>are picking…</span></span>}</div></div>
+          <div style={{fontSize:18,fontWeight:800,marginTop:2}}>{yourTurn?<span style={{color:'#f59e0b'}}>⚾ YOU ARE ON THE CLOCK</span>:draft.done?<span style={{color:'#22c55e'}}>Draft complete - finalizing...</span>:<span>{clock.city} {clock.name} <span style={{color:'#475569'}}>are picking…</span></span>}</div></div>
         <div style={{textAlign:'right'}}><div style={{fontSize:10,color:'#475569'}}>YOUR TEAM</div><div style={{color:'#f59e0b',fontWeight:800,fontSize:14}}>{meTeam.city} {meTeam.name}</div></div>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:14}}>
