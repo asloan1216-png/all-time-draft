@@ -7526,6 +7526,261 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // ═══════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// FRANCHISE MODE v2 — fantasy draft + franchise data model
+// ═══════════════════════════════════════════════════════════════
+const MLB_TEAMS = [
+  {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
+  {id:'CHW',city:'Chicago',name:'White Sox',league:'AL',division:'Central'},{id:'CLE',city:'Cleveland',name:'Guardians',league:'AL',division:'Central'},{id:'DET',city:'Detroit',name:'Tigers',league:'AL',division:'Central'},{id:'KCR',city:'Kansas City',name:'Royals',league:'AL',division:'Central'},{id:'MIN',city:'Minnesota',name:'Twins',league:'AL',division:'Central'},
+  {id:'HOU',city:'Houston',name:'Astros',league:'AL',division:'West'},{id:'LAA',city:'Los Angeles',name:'Angels',league:'AL',division:'West'},{id:'ATH',city:'Athletics',name:'Athletics',league:'AL',division:'West'},{id:'SEA',city:'Seattle',name:'Mariners',league:'AL',division:'West'},{id:'TEX',city:'Texas',name:'Rangers',league:'AL',division:'West'},
+  {id:'ATL',city:'Atlanta',name:'Braves',league:'NL',division:'East'},{id:'MIA',city:'Miami',name:'Marlins',league:'NL',division:'East'},{id:'NYM',city:'New York',name:'Mets',league:'NL',division:'East'},{id:'PHI',city:'Philadelphia',name:'Phillies',league:'NL',division:'East'},{id:'WSN',city:'Washington',name:'Nationals',league:'NL',division:'East'},
+  {id:'CHC',city:'Chicago',name:'Cubs',league:'NL',division:'Central'},{id:'CIN',city:'Cincinnati',name:'Reds',league:'NL',division:'Central'},{id:'MIL',city:'Milwaukee',name:'Brewers',league:'NL',division:'Central'},{id:'PIT',city:'Pittsburgh',name:'Pirates',league:'NL',division:'Central'},{id:'STL',city:'St. Louis',name:'Cardinals',league:'NL',division:'Central'},
+  {id:'ARI',city:'Arizona',name:'Diamondbacks',league:'NL',division:'West'},{id:'COL',city:'Colorado',name:'Rockies',league:'NL',division:'West'},{id:'LAD',city:'Los Angeles',name:'Dodgers',league:'NL',division:'West'},{id:'SDP',city:'San Diego',name:'Padres',league:'NL',division:'West'},{id:'SFG',city:'San Francisco',name:'Giants',league:'NL',division:'West'},
+];
+const FRANCHISE_KEY='atd_franchise_v2';
+function saveFranchise(f){try{localStorage.setItem(FRANCHISE_KEY,JSON.stringify(f));return true;}catch(e){console.error('save failed',e);return false;}}
+function loadFranchise(){try{const s=localStorage.getItem(FRANCHISE_KEY);return s?JSON.parse(s):null;}catch(e){return null;}}
+function hasFranchise(){try{return !!localStorage.getItem(FRANCHISE_KEY);}catch(e){return false;}}
+function deleteFranchise(){try{localStorage.removeItem(FRANCHISE_KEY);}catch(e){}}
+
+const FR_HIT_SLOTS=['c','1b','2b','3b','ss','lf','cf','rf','dh'];
+const FR_SP_SLOTS=['sp1','sp2','sp3','sp4','sp5'];
+const FR_RP_SLOTS=['rp1','rp2','rp3','rp4'];
+const FR_SCARCE=['c','ss','2b','3b','1b','cf','rf','lf'];
+const FR_SLOT_POS={c:'C','1b':'1B','2b':'2B','3b':'3B',ss:'SS',lf:'LF',cf:'CF',rf:'RF',dh:'DH'};
+const FR_POS_COLOR={C:'#f472b6','1B':'#fb923c','2B':'#facc15','3B':'#a3e635',SS:'#34d399',LF:'#22d3ee',CF:'#38bdf8',RF:'#818cf8',DH:'#c084fc',SP:'#f59e0b',RP:'#a78bfa'};
+
+function frDedupPool(players){const byName={};for(const p of players){const w=p.avgWARperYear||0;if(!byName[p.name]||w>(byName[p.name].avgWARperYear||0))byName[p.name]=p;}return Object.values(byName);}
+function frPrimary(p){if(p.type==='pitcher')return p.role==='SP'?'SP':'RP';for(const pos of FR_SCARCE){if((p.eligiblePositions||[]).includes(pos.toUpperCase()))return pos.toUpperCase();}return 'DH';}
+function frEligSlots(p){return (p.eligiblePositions||[]).map(x=>x.toLowerCase()).filter(s=>FR_HIT_SLOTS.includes(s));}
+function frCanFill(p,r){if(frPrimary(p)==='SP')return FR_SP_SLOTS.some(s=>!r[s]);if(frPrimary(p)==='RP')return FR_RP_SLOTS.some(s=>!r[s]);return frEligSlots(p).some(s=>!r[s])||!r['dh'];}
+function frAssign(p,r){
+  const prim=frPrimary(p);
+  if(prim==='SP'){const s=FR_SP_SLOTS.find(x=>!r[x]);if(s){r[s]=p;return s;}}
+  else if(prim==='RP'){const s=FR_RP_SLOTS.find(x=>!r[x]);if(s){r[s]=p;return s;}}
+  else{const es=frEligSlots(p);for(const sl of FR_SCARCE){if(es.includes(sl)&&!r[sl]){r[sl]=p;return sl;}}if(!r['dh']){r['dh']=p;return 'dh';}}
+  const open=[...FR_HIT_SLOTS,...FR_SP_SLOTS,...FR_RP_SLOTS].find(s=>!r[s]);
+  if(open){r[open]=p;return open;}return null;
+}
+function frTeamOnClock(d){return d.round%2===0?d.pickInRound:(29-d.pickInRound);}
+function frApplyPick(d,player,tid){
+  const rosters={...d.rosters,[tid]:{...d.rosters[tid]}};
+  frAssign(player,rosters[tid]);
+  const avail=d.avail.filter(p=>p.name!==player.name);
+  const you=d.order[d.userIdx]===tid;
+  const log=[{rnd:d.round+1,team:tid,name:player.name,pos:frPrimary(player),you},...d.log].slice(0,40);
+  let {round,pickInRound,overall}=d; overall++; pickInRound++;
+  if(pickInRound>=30){pickInRound=0;round++;}
+  return {...d,rosters,avail,log,round,pickInRound,overall,done:round>=18};
+}
+function frAiStep(d){
+  const tid=d.order[frTeamOnClock(d)];const r=d.rosters[tid];
+  const fits=d.avail.filter(p=>frCanFill(p,r));
+  let pick;
+  if(fits.length){const top=fits.slice(0,3);pick=top[Math.random()<0.65?0:(Math.random()<0.6?1:2)]||top[0];}
+  else pick=d.avail[0];
+  return pick?frApplyPick(d,pick,tid):{...d,done:true};
+}
+function frAssignAge(){const bands=[[22,24,0.15],[25,28,0.42],[29,31,0.28],[32,35,0.15]];const r=Math.random();let c=0;for(const[lo,hi,p]of bands){c+=p;if(r<c)return lo+Math.floor(Math.random()*(hi-lo+1));}return 28;}
+function frCompact(p,slot){return {id:p.id,name:p.name,team:p.team,decade:p.decade,type:p.type,role:p.role||null,eligiblePositions:p.eligiblePositions||[],stats:p.stats||{},avgWARperYear:p.avgWARperYear||0,assignedPos:FR_SLOT_POS[slot]||(slot.startsWith('sp')?'SP':'RP'),age:frAssignAge()};}
+function frFinalize(d,userTeamId,length){
+  const teams={};
+  MLB_TEAMS.forEach(t=>{const ros={};Object.entries(d.rosters[t.id]).forEach(([slot,p])=>{ros[slot]=frCompact(p,slot);});teams[t.id]={roster:ros,record:{w:0,l:0}};});
+  return {version:2,createdAt:Date.now(),userTeamId,franchiseLength:length,season:1,teams,draftOrder:d.order};
+}
+
+function FranchiseScreen({players,onExit}){
+  const [fr,setFr]=useState(()=>loadFranchise());
+  const [view,setView]=useState(fr?'home':'setup');
+  const [pickTeam,setPickTeam]=useState(null);
+  const [pickLen,setPickLen]=useState(null);
+  const [draft,setDraft]=useState(null);
+  const [tab,setTab]=useState('needs');
+  const poolRef=useRef(null);
+  if(!poolRef.current)poolRef.current=frDedupPool(players);
+  const pool=poolRef.current;
+
+  // AI pick driver (staggered) — runs only on AI turns
+  useEffect(()=>{
+    if(view!=='draft'||!draft||draft.done)return;
+    if(frTeamOnClock(draft)===draft.userIdx)return;
+    const id=setTimeout(()=>setDraft(d=>frAiStep(d)),40);
+    return ()=>clearTimeout(id);
+  },[draft,view]);
+
+  // finalize + save once the draft completes
+  useEffect(()=>{
+    if(view==='draft'&&draft&&draft.done){
+      const f=frFinalize(draft,pickTeam,pickLen);
+      saveFranchise(f);setFr(f);setView('complete');
+    }
+  },[draft,view,pickTeam,pickLen]);
+
+  function startDraft(){
+    const order=[...MLB_TEAMS.map(t=>t.id)].sort(()=>Math.random()-0.5);
+    const userIdx=order.indexOf(pickTeam);
+    const rosters={};order.forEach(t=>rosters[t]={});
+    const avail=[...pool].sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
+    setDraft({order,userIdx,rosters,avail,round:0,pickInRound:0,overall:0,log:[],done:false});
+    setView('draft');
+  }
+  function userPick(name){
+    const tid=draft.order[frTeamOnClock(draft)];
+    const p=draft.avail.find(x=>x.name===name);
+    if(!p||!frCanFill(p,draft.rosters[tid]))return;
+    setDraft(d=>frApplyPick(d,p,tid));
+  }
+  function startOver(){if(!window.confirm('Delete your franchise and start over? This cannot be undone.'))return;deleteFranchise();setFr(null);setDraft(null);setPickTeam(null);setPickLen(null);setView('setup');}
+
+  const card={background:'rgba(8,16,32,0.8)',border:'1px solid #0f1f35',borderRadius:12};
+  const wrap={minHeight:'100vh',background:'radial-gradient(ellipse at 50% -10%,#0d2848,#050c18 60%)',padding:'24px 16px'};
+  const ghost={background:'transparent',border:'1px solid #1e3a5f',color:'#94a3b8',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:700};
+  const gold={background:'#f59e0b',color:'#000',border:'none',borderRadius:8,cursor:'pointer',fontWeight:800};
+
+  // ── SETUP ──────────────────────────────────────────────────
+  if(view==='setup'){
+    const divs=[['AL','East'],['AL','Central'],['AL','West'],['NL','East'],['NL','Central'],['NL','West']];
+    return (<div style={wrap}><div style={{maxWidth:880,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+        <div className="serif" style={{fontSize:40,fontWeight:900,color:'#f59e0b',letterSpacing:'-1px',fontFamily:'Georgia,serif'}}>Franchise Fantasy Draft</div>
+        <button style={ghost} onClick={onExit}>← Menu</button>
+      </div>
+      <div style={{fontSize:13,color:'#475569',marginBottom:20,lineHeight:1.6}}>Pick your team and franchise length. Your draft slot is randomized — then you draft live against 29 AI clubs over 18 snake rounds.</div>
+      <div style={{...card,padding:'16px 20px',marginBottom:14}}>
+        <div style={{fontSize:11,letterSpacing:2,color:'#475569',fontWeight:800,marginBottom:12}}>1 · CHOOSE YOUR TEAM</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+          {divs.map(([lg,dv])=>(<div key={lg+dv}><div style={{fontSize:10,letterSpacing:1,color:'#334155',fontWeight:800,marginBottom:6}}>{lg} {dv.toUpperCase()}</div>
+            {MLB_TEAMS.filter(t=>t.league===lg&&t.division===dv).map(t=>(
+              <div key={t.id} onClick={()=>setPickTeam(t.id)} style={{padding:'8px 11px',marginBottom:5,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',border:'1px solid '+(pickTeam===t.id?'#f59e0b':'#0f1f35'),borderRadius:8,fontSize:12,background:pickTeam===t.id?'rgba(245,158,11,0.12)':'rgba(8,16,32,0.6)'}}>
+                <span style={{color:'#e2e8f0',fontWeight:600}}>{t.city} {t.name}</span><span style={{color:'#475569',fontFamily:'monospace',fontSize:10}}>{t.id}</span></div>))}
+          </div>))}
+        </div>
+      </div>
+      <div style={{...card,padding:'16px 20px',marginBottom:18}}>
+        <div style={{fontSize:11,letterSpacing:2,color:'#475569',fontWeight:800,marginBottom:12}}>2 · FRANCHISE LENGTH</div>
+        <div style={{display:'flex',gap:12,justifyContent:'center'}}>
+          {[10,20,30,50].map(y=>(<div key={y} onClick={()=>setPickLen(y)} style={{padding:'12px 0',width:80,textAlign:'center',border:'1px solid '+(pickLen===y?'#f59e0b':'#1e3a5f'),borderRadius:10,cursor:'pointer',fontWeight:800,fontSize:15,color:pickLen===y?'#f59e0b':'#94a3b8',background:pickLen===y?'rgba(245,158,11,0.12)':'rgba(8,16,32,0.6)'}}>{y}<div style={{fontSize:9,color:'#475569',fontWeight:600,marginTop:2}}>years</div></div>))}
+        </div>
+      </div>
+      <div style={{textAlign:'center'}}><button onClick={startDraft} disabled={!pickTeam||!pickLen} style={{...gold,padding:'14px 48px',fontSize:15,opacity:(pickTeam&&pickLen)?1:0.4}}>Start Draft →</button></div>
+    </div></div>);
+  }
+
+  // ── DRAFT ──────────────────────────────────────────────────
+  if(view==='draft'&&draft){
+    const me=draft.order[draft.userIdx];const meTeam=MLB_TEAMS.find(t=>t.id===me);
+    const slot=draft.done?-1:frTeamOnClock(draft);
+    const clock=draft.done?null:MLB_TEAMS.find(t=>t.id===draft.order[slot]);
+    const yourTurn=!draft.done&&draft.order[slot]===me;
+    const myRoster=draft.rosters[me];
+    let list=[];
+    if(yourTurn){
+      list=draft.avail;
+      if(tab==='needs')list=list.filter(p=>frCanFill(p,myRoster));
+      else if(tab==='SP'||tab==='RP')list=list.filter(p=>frPrimary(p)===tab);
+      else if(tab!=='all')list=list.filter(p=>(p.eligiblePositions||[]).includes(tab));
+      list=list.slice(0,50);
+    }
+    const posTabs=['needs','all','C','1B','2B','3B','SS','LF','CF','RF','SP','RP'];
+    const rosterCount=Object.keys(myRoster).length;
+    return (<div style={wrap}><div style={{maxWidth:1040,margin:'0 auto'}}>
+      <div style={{...card,padding:'12px 16px',marginBottom:12,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div><span style={{fontSize:11,letterSpacing:1,color:'#475569',fontWeight:800}}>ROUND {Math.min(draft.round+1,18)} / 18 · PICK {draft.overall+(draft.done?0:1)} OF 540</span>
+          <div style={{fontSize:18,fontWeight:800,marginTop:2}}>{yourTurn?<span style={{color:'#f59e0b'}}>⚾ YOU ARE ON THE CLOCK</span>:<span>{clock.city} {clock.name} <span style={{color:'#475569'}}>are picking…</span></span>}</div></div>
+        <div style={{textAlign:'right'}}><div style={{fontSize:10,color:'#475569'}}>YOUR TEAM</div><div style={{color:'#f59e0b',fontWeight:800,fontSize:14}}>{meTeam.city} {meTeam.name}</div></div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:14}}>
+        <div style={{...card,padding:'12px 14px'}}>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>{posTabs.map(t=>(<div key={t} onClick={()=>setTab(t)} style={{padding:'5px 9px',border:'1px solid '+(tab===t?'#f59e0b':'#1e3a5f'),borderRadius:6,cursor:'pointer',fontSize:11,color:tab===t?'#f59e0b':'#94a3b8',background:tab===t?'rgba(245,158,11,0.1)':'transparent',whiteSpace:'nowrap'}}>{t==='needs'?'My Needs':t==='all'?'All':t}</div>))}</div>
+          <div style={{maxHeight:440,overflowY:'auto'}}>
+          {yourTurn?list.map(p=>{const ok=frCanFill(p,myRoster);const pr=frPrimary(p);return (
+            <div key={p.name} onClick={()=>ok&&userPick(p.name)} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderBottom:'1px solid #0a1424',fontSize:12,cursor:ok?'pointer':'not-allowed',opacity:ok?1:0.3,borderRadius:6}}>
+              <span style={{fontSize:9,fontWeight:800,padding:'2px 5px',borderRadius:4,fontFamily:'monospace',width:28,textAlign:'center',background:FR_POS_COLOR[pr]+'22',color:FR_POS_COLOR[pr]}}>{pr}</span>
+              <span style={{flex:1,color:'#e2e8f0',fontWeight:600}}>{p.name}</span>
+              <span style={{color:'#475569',fontSize:9}}>{(p.eligiblePositions||[]).join('/')}</span>
+              <span style={{color:'#475569',fontFamily:'monospace',fontSize:10,marginLeft:6}}>{p.team} · {p.decade}</span>
+              <span style={{color:'#f59e0b',fontFamily:'monospace',width:42,textAlign:'right'}}>{(p.avgWARperYear||0).toFixed(1)}</span></div>);})
+          :<div style={{textAlign:'center',padding:40,color:'#475569',fontSize:13}}>The AI clubs are drafting…<br/><span style={{fontSize:11}}>picks resolve automatically — your turn is coming.</span></div>}
+          </div>
+        </div>
+        <div>
+          <div style={{...card,padding:'12px 14px',marginBottom:12}}>
+            <div className="serif" style={{fontSize:13,fontWeight:800,color:'#f1f5f9',marginBottom:8,fontFamily:'Georgia,serif'}}>Your Roster <span style={{color:'#475569',fontSize:10,fontWeight:600}}>{rosterCount}/18</span></div>
+            {[['LINEUP',FR_HIT_SLOTS,'#60a5fa'],['ROTATION',FR_SP_SLOTS,'#60a5fa'],['BULLPEN',FR_RP_SLOTS,'#a78bfa']].map(([lab,slots,ac])=>(<div key={lab}>
+              <div style={{fontSize:9,letterSpacing:1.5,color:ac,fontWeight:800,margin:'6px 0 3px'}}>{lab}</div>
+              {slots.map(s=>{const p=myRoster[s];return (<div key={s} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 9px',borderBottom:'1px solid #080f1e',fontSize:11}}><span style={{color:'#475569',width:30,fontSize:9,fontWeight:800}}>{s.toUpperCase()}</span><span style={{flex:1,color:p?'#e2e8f0':'#334155'}}>{p?p.name:'—'}</span>{p&&<span style={{color:'#475569',fontFamily:'monospace',fontSize:9}}>{(p.avgWARperYear||0).toFixed(1)}</span>}</div>);})}
+            </div>))}
+          </div>
+          <div style={{...card,padding:'12px 14px'}}>
+            <div className="serif" style={{fontSize:12,fontWeight:800,color:'#f1f5f9',marginBottom:6,fontFamily:'Georgia,serif'}}>Recent Picks</div>
+            <div style={{maxHeight:150,overflowY:'auto'}}>
+            {draft.log.slice(0,14).map((l,idx)=>(<div key={idx} style={{display:'flex',gap:6,alignItems:'center',fontSize:11,padding:'3px 4px',borderRadius:4,background:l.you?'rgba(245,158,11,0.08)':'transparent'}}>
+              <span style={{fontSize:9,fontWeight:800,padding:'2px 5px',borderRadius:4,fontFamily:'monospace',width:26,textAlign:'center',background:FR_POS_COLOR[l.pos]+'22',color:FR_POS_COLOR[l.pos]}}>{l.pos}</span>
+              <span style={{color:l.you?'#f59e0b':'#cbd5e1',fontWeight:l.you?700:400,flex:1}}>{l.name}</span>
+              <span style={{color:'#475569',fontFamily:'monospace',fontSize:9}}>{l.team}</span></div>))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>);
+  }
+
+  // ── COMPLETE ───────────────────────────────────────────────
+  if(view==='complete'&&fr){
+    const me=fr.teams[fr.userTeamId];const meTeam=MLB_TEAMS.find(t=>t.id===fr.userTeamId);
+    const tot=Object.values(me.roster).reduce((a,p)=>a+(p.avgWARperYear||0),0);
+    return (<div style={wrap}><div style={{maxWidth:600,margin:'0 auto'}}>
+      <div style={{textAlign:'center',marginBottom:8}}><span className="serif" style={{fontSize:34,fontWeight:900,color:'#22c55e',fontFamily:'Georgia,serif'}}>Draft Complete</span></div>
+      <div style={{textAlign:'center',color:'#94a3b8',fontSize:14,marginBottom:14}}>{meTeam.city} {meTeam.name} · {fr.franchiseLength}-year franchise · roster WAR {tot.toFixed(1)}</div>
+      <div style={{textAlign:'center',marginBottom:18}}><button onClick={()=>setView('home')} style={{...gold,padding:'12px 36px',fontSize:14}}>Enter your franchise →</button></div>
+      <div style={{...card,padding:'16px 20px'}}>
+        {[['LINEUP',FR_HIT_SLOTS,'#60a5fa'],['ROTATION',FR_SP_SLOTS,'#60a5fa'],['BULLPEN',FR_RP_SLOTS,'#a78bfa']].map(([lab,slots,ac])=>(<div key={lab}>
+          <div style={{fontSize:10,letterSpacing:2,color:ac,fontWeight:800,margin:'8px 0 4px'}}>{lab}</div>
+          {slots.map(s=>{const p=me.roster[s];const off=p&&p.assignedPos!==(p.eligiblePositions||[])[0]&&!['SP','RP'].includes(p.assignedPos);return (<div key={s} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 9px',borderBottom:'1px solid #080f1e',fontSize:11}}><span style={{color:'#475569',width:34,fontSize:10,fontWeight:800}}>{s.toUpperCase()}</span><span style={{flex:1,color:'#e2e8f0'}}>{p?p.name:'—'}{p&&` `}{p&&<span style={{color:'#475569',fontSize:9}}>· {p.age}yo</span>}</span><span style={{color:'#475569',fontFamily:'monospace',fontSize:10,marginRight:8}}>{p?p.team+' · '+p.decade:''}</span><span style={{color:'#f59e0b',fontFamily:'monospace',width:42,textAlign:'right'}}>{p?(p.avgWARperYear||0).toFixed(1):''}</span></div>);})}
+        </div>))}
+      </div>
+    </div></div>);
+  }
+
+  // ── HOME ───────────────────────────────────────────────────
+  const myTeam=fr.teams[fr.userTeamId];const meInfo=MLB_TEAMS.find(t=>t.id===fr.userTeamId);
+  const roster=myTeam.roster;
+  const divisions=[['AL','East'],['AL','Central'],['AL','West'],['NL','East'],['NL','Central'],['NL','West']];
+  const Roster=({slots,label,accent})=>(<div style={{marginBottom:12}}><div style={{fontSize:10,letterSpacing:2,color:accent,fontWeight:800,margin:'4px 0 4px'}}>{label}</div>
+    {slots.map(s=>{const p=roster[s];if(!p)return null;return (<div key={s} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'5px 10px',borderBottom:'1px solid #080f1e',fontSize:12,background:'rgba(8,16,32,0.5)'}}>
+      <span style={{width:34,color:'#475569',fontSize:10,fontWeight:800}}>{p.assignedPos}</span><span style={{flex:1,color:'#e2e8f0'}}>{p.name}</span>
+      <span style={{fontSize:9,color:'#475569',marginRight:6}}>{p.age}yo</span>
+      <span style={{fontSize:10,color:'#475569',fontFamily:'monospace',marginRight:8}}>{p.team} · {p.decade}</span>
+      <span style={{fontSize:11,color:'#f59e0b',fontFamily:'monospace',width:50,textAlign:'right'}}>{(p.avgWARperYear||0).toFixed(1)} WAR</span></div>);})}
+  </div>);
+  return (<div style={wrap}><div style={{maxWidth:880,margin:'0 auto'}}>
+    <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:16}}>
+      <div><div style={{fontSize:11,letterSpacing:2,color:'#475569',fontWeight:800}}>SEASON {fr.season} OF {fr.franchiseLength} · {meInfo.league} {meInfo.division}</div>
+        <div className="serif" style={{fontSize:36,fontWeight:900,color:'#f59e0b',letterSpacing:'-1px',fontFamily:'Georgia,serif',lineHeight:1.1}}>{meInfo.city} {meInfo.name}</div></div>
+      <div style={{display:'flex',gap:8}}><button onClick={startOver} style={{background:'transparent',border:'1px solid #7f1d1d',color:'#f87171',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:12,fontWeight:700}}>Start Over</button><button onClick={onExit} style={ghost}>← Menu</button></div>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'1.1fr 0.9fr',gap:18}}>
+      <div style={{...card,padding:'14px 16px'}}>
+        <div className="serif" style={{fontSize:13,fontWeight:800,color:'#f1f5f9',marginBottom:8,fontFamily:'Georgia,serif'}}>Your Roster</div>
+        <Roster slots={FR_HIT_SLOTS} label="LINEUP" accent="#60a5fa"/><Roster slots={FR_SP_SLOTS} label="ROTATION" accent="#60a5fa"/><Roster slots={FR_RP_SLOTS} label="BULLPEN" accent="#a78bfa"/>
+      </div>
+      <div>
+        <div style={{...card,padding:'14px 16px',marginBottom:14}}>
+          <div className="serif" style={{fontSize:13,fontWeight:800,color:'#f1f5f9',marginBottom:10,fontFamily:'Georgia,serif'}}>The League</div>
+          {divisions.map(([lg,dv])=>(<div key={lg+dv} style={{marginBottom:10}}><div style={{fontSize:9,letterSpacing:1.5,color:'#334155',fontWeight:800,marginBottom:4}}>{lg} {dv.toUpperCase()}</div>
+            {MLB_TEAMS.filter(t=>t.league===lg&&t.division===dv).map(t=>(<div key={t.id} style={{display:'flex',justifyContent:'space-between',padding:'3px 8px',fontSize:11,borderRadius:5,background:t.id===fr.userTeamId?'rgba(245,158,11,0.1)':'transparent',color:t.id===fr.userTeamId?'#f59e0b':'#94a3b8',fontWeight:t.id===fr.userTeamId?700:400}}><span>{t.city} {t.name}</span><span style={{fontFamily:'monospace',color:'#475569'}}>{fr.teams[t.id].record.w}-{fr.teams[t.id].record.l}</span></div>))}
+          </div>))}
+        </div>
+        <div style={{...card,padding:'14px 16px',textAlign:'center',borderColor:'#1e3a5f'}}>
+          <div style={{fontSize:13,color:'#94a3b8',marginBottom:4,fontWeight:700}}>Season simulation</div>
+          <div style={{fontSize:11,color:'#475569',lineHeight:1.5}}>Coming next: sim the full league, standings, playoffs, and a champion — then players age between seasons.</div>
+        </div>
+      </div>
+    </div>
+    <div style={{textAlign:'center',marginTop:16,fontSize:11,color:'#334155'}}>Franchise saved on this device · auto-loads when you return</div>
+  </div></div>);
+}
+
 export default function App(){
   const [screen,setScreen]=useState('home');
   const [mode,setMode]=useState('classic');
@@ -7755,6 +8010,18 @@ export default function App(){
           ))}
         </div>
 
+        {/* Franchise Mode entry */}
+        <div onClick={()=>setScreen('franchise')}
+          style={{maxWidth:720,margin:'0 auto 4px',background:'rgba(245,158,11,0.06)',border:'1px solid rgba(245,158,11,0.35)',borderRadius:16,padding:'20px 28px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',gap:16}}
+          onMouseEnter={e=>e.currentTarget.style.borderColor='#f59e0b'}
+          onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(245,158,11,0.35)'}>
+          <div style={{textAlign:'left'}}>
+            <div style={{fontSize:17,fontWeight:800,color:'#f59e0b'}}>🏟️ Franchise Mode <span style={{fontSize:10,letterSpacing:1,color:'#475569',fontWeight:700,verticalAlign:'middle'}}>NEW</span></div>
+            <div style={{fontSize:12,color:'#475569',marginTop:4,lineHeight:1.5}}>Fantasy-draft a 30-team MLB league and run it across seasons. Saved on your device.</div>
+          </div>
+          <div style={{background:'#f59e0b',color:'#000',borderRadius:8,padding:'10px 22px',fontWeight:800,fontSize:13,whiteSpace:'nowrap'}}>Enter</div>
+        </div>
+
         {/* How It Works */}
         <div style={{marginTop:40,textAlign:'left',background:'rgba(8,16,32,0.6)',border:'1px solid #0f1f35',borderRadius:16,padding:'28px 32px',maxWidth:720}}>
           <div style={{fontSize:11,letterSpacing:3,color:'#334155',fontWeight:700,marginBottom:20}}>HOW IT WORKS</div>
@@ -7794,6 +8061,8 @@ export default function App(){
       </div>
     </div>
   );
+
+  if(screen==='franchise') return <FranchiseScreen players={players} onExit={()=>setScreen('home')}/>;
 
   if(screen==='results'&&result) return <ResultsScreen result={result} roster={roster} lineup={lineup} onReplay={()=>{const r=simulate(roster,lineup,decadeMode); if(r){ if(salaryMode){r.salaryMode=true;r.budgetSpent=budgetSpent;r.budgetTotal=SALARY_CAP_BUDGET;} if(decadeMode)r.decadeMode=true; setResult(r);} }} onReset={reset} onShare={()=>navigator.clipboard?.writeText(`All-Time Draft\n${result.wins}-${result.losses} | ${result.benchmark?.label}`).catch(()=>{})}/>;
 
