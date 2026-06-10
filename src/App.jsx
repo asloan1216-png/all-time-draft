@@ -7578,7 +7578,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v9 — aging, retirement & offseason free agency
+// FRANCHISE MODE v10 — Hall of Fame & career records
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -7640,6 +7640,30 @@ function frAgeMult(a){if(a==null)return 1;if(a<21)return 0.75;if(a>41)return 0.1
 function frEffWAR(p){return Math.max(0,(p.avgWARperYear||0)*frAgeMult(p.age));}
 function frRetireChance(age,talent){const T={34:0.06,35:0.12,36:0.22,37:0.38,38:0.55,39:0.72,40:0.85,41:0.95};let c=age>=42?1:(T[age]||0);if(talent>=5)c*=0.75;return c;}
 const FR_ALL_SLOTS=[...FR_HIT_SLOTS,...FR_SP_SLOTS,...FR_RP_SLOTS];
+function frCareerPool(fr){
+  const out=[];
+  Object.entries(fr.teams).forEach(([tid,t])=>{FR_ALL_SLOTS.forEach(sl=>{const p=t.roster[sl];if(p&&p.career)out.push({name:p.name,teamId:tid,career:p.career,isPit:FR_SP_SLOTS.includes(sl)||FR_RP_SLOTS.includes(sl),active:true});});});
+  (fr.retired||[]).forEach(r=>{if(r.career)out.push({name:r.name,teamId:r.teamId,career:r.career,isPit:(r.isPit!=null)?r.isPit:(r.career.ip!=null),active:false});});
+  return out;
+}
+function frCareerTop(pool,key,n,minQ){
+  const rows=pool.filter(x=>{if(minQ&&minQ.ab&&(x.career.ab||0)<minQ.ab)return false;if(minQ&&minQ.ip&&(x.career.ip||0)<minQ.ip)return false;return true;})
+    .map(x=>({name:x.name,teamId:x.teamId,active:x.active,yrs:x.career.seasons||0,
+      value:key==='cavg'?(x.career.ab?x.career.h/x.career.ab:0):key==='cera'?(x.career.ip?x.career.er*9/x.career.ip:99):(key==='ip'?Math.round(x.career.ip||0):(x.career[key]||0))}));
+  rows.sort((a,b)=>key==='cera'?a.value-b.value:b.value-a.value);
+  return rows.slice(0,n);
+}
+function frHofEligible(career,isPit){
+  // This is a league of all-time greats, so the bar is "legend among legends":
+  // a 40-WAR career is merely average here. ~10-15% of retirees should make it.
+  if(!career)return false;
+  const war=career.war||0,yrs=career.seasons||0,per=yrs?war/yrs:0;
+  if(war>=60)return true;
+  if(war>=45&&per>=6.2&&yrs>=5)return true;
+  if(!isPit&&((career.hr||0)>=450||(career.h||0)>=2600||(career.sb||0)>=600))return true;
+  if(isPit&&((career.w||0)>=220||(career.so||0)>=2800||(career.sv||0)>=350))return true;
+  return false;
+}
 function frBuildOffseason(fr,playersAll){
   const teams={};const retirees=[];const retiredNames=[...(fr.retiredNames||[])];
   Object.entries(fr.teams).forEach(([tid,t])=>{
@@ -7647,7 +7671,8 @@ function frBuildOffseason(fr,playersAll){
     FR_ALL_SLOTS.forEach(sl=>{const p=ros[sl];if(!p)return;
       const newAge=(p.age||27)+1;
       if(frRnd()<frRetireChance(newAge,p.avgWARperYear||0)){
-        retirees.push({name:p.name,teamId:tid,slot:sl,age:newAge,war:p.avgWARperYear||0,career:p.career||null});
+        const isPit=FR_SP_SLOTS.includes(sl)||FR_RP_SLOTS.includes(sl);
+        retirees.push({name:p.name,teamId:tid,slot:sl,age:newAge,war:p.avgWARperYear||0,career:p.career||null,isPit,hof:frHofEligible(p.career,isPit)});
         retiredNames.push(p.name);ros[sl]=null;
       } else ros[sl]={...p,age:newAge};
     });
@@ -7694,7 +7719,14 @@ function frFillVacancies(fr,playersAll,teamIds){
 function frMigrateAges(f){
   if(!f||!f.teams)return f;let ch=false;const teams={};
   Object.entries(f.teams).forEach(([id,t])=>{const ros={...t.roster};FR_ALL_SLOTS.forEach(sl=>{const p=ros[sl];if(p&&p.age==null){ros[sl]={...p,age:24+Math.floor(frRnd()*10)};ch=true;}});teams[id]={...t,roster:ros};});
-  if(!ch)return f;return {...f,teams,retiredNames:f.retiredNames||[],retired:f.retired||[]};
+  let nf=ch?{...f,teams}:f;
+  if(nf.hof==null){
+    const hof=(nf.retired||[]).filter(r=>r.career&&frHofEligible(r.career,(r.isPit!=null)?r.isPit:(r.career.ip!=null)))
+      .map(r=>({name:r.name,teamId:r.teamId,age:r.age,career:r.career,isPit:(r.isPit!=null)?r.isPit:(r.career.ip!=null),season:r.season}));
+    nf={...nf,hof};ch=true;
+  }
+  if(!ch)return f;
+  return {...nf,retiredNames:nf.retiredNames||[],retired:nf.retired||[]};
 }
 
 function frCompact(p,slot){return {id:p.id,name:p.name,team:p.team,decade:p.decade,type:p.type,role:p.role||null,eligiblePositions:p.eligiblePositions||[],stats:p.stats||{},avgWARperYear:p.avgWARperYear||0,assignedPos:FR_SLOT_POS[slot]||(slot.startsWith('sp')?'SP':'RP'),age:frAssignAge()};}
@@ -7975,6 +8007,7 @@ function FranchiseScreen({players,onExit}){
   const [leadSeason,setLeadSeason]=useState(null);
   const [stLg,setStLg]=useState(null);
   const [faSlot,setFaSlot]=useState(null);
+  const [recTab,setRecTab]=useState('season');
   const poolRef=useRef(null);
   if(!poolRef.current)poolRef.current=frDedupPool(players);
   const pool=poolRef.current;
@@ -8050,7 +8083,10 @@ function FranchiseScreen({players,onExit}){
   function finishOffseason(){
     const os=fr.offseason;if(!os)return;
     let nf=frFillVacancies(fr,players,MLB_TEAMS.map(t=>t.id));
-    nf={...nf,retired:[...(fr.retired||[]),...os.retirees.map(r=>({name:r.name,teamId:r.teamId,age:r.age,career:r.career,season:os.season}))],offseason:null};
+    nf={...nf,
+      retired:[...(fr.retired||[]),...os.retirees.map(r=>({name:r.name,teamId:r.teamId,age:r.age,career:r.career,isPit:!!r.isPit,hof:!!r.hof,season:os.season}))],
+      hof:[...(fr.hof||[]),...os.retirees.filter(r=>r.hof).map(r=>({name:r.name,teamId:r.teamId,age:r.age,career:r.career,isPit:!!r.isPit,season:os.season}))],
+      offseason:null};
     nextSeason(nf);
   }
 
@@ -8239,14 +8275,14 @@ function FranchiseScreen({players,onExit}){
           {myRet.length>0&&<div style={{marginBottom:10}}>
             <div style={{fontSize:10,letterSpacing:2,color:'#f59e0b',fontWeight:800,marginBottom:6}}>YOUR CLUBHOUSE</div>
             {myRet.map((r,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:13,padding:'3px 0',color:'#f59e0b',fontWeight:700}}>
-              <span>{r.name} <span style={{color:'#64748b',fontWeight:400,fontSize:11}}>retires at {r.age}</span></span>
+              <span>{r.name} <span style={{color:'#64748b',fontWeight:400,fontSize:11}}>retires at {r.age}</span>{r.hof&&<span style={{marginLeft:6,fontSize:9,fontWeight:800,letterSpacing:1,color:'#fbbf24',border:'1px solid rgba(251,191,36,0.5)',borderRadius:4,padding:'1px 5px'}}>⭐ HOF</span>}</span>
               <span style={{fontFamily:'monospace',fontSize:11,color:'#94a3b8',whiteSpace:'nowrap'}}>{r.career?((r.career.war||0).toFixed(1)+' WAR · '+r.career.seasons+' yrs'):''}</span>
             </div>))}
           </div>}
           {lgRet.length>0&&<div>
             <div style={{fontSize:10,letterSpacing:2,color:'#94a3b8',fontWeight:800,marginBottom:6,borderTop:myRet.length?'1px solid #1e3a5f':'none',paddingTop:myRet.length?10:0}}>AROUND THE LEAGUE</div>
             {lgRet.slice(0,12).map((r,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:12,padding:'2.5px 0',color:'#cbd5e1'}}>
-              <span>{r.name} <span style={{color:'#475569',fontSize:10}}>{TN(r.teamId)} · age {r.age}</span></span>
+              <span>{r.name} <span style={{color:'#475569',fontSize:10}}>{TN(r.teamId)} · age {r.age}</span>{r.hof&&<span style={{marginLeft:6,fontSize:9,fontWeight:800,letterSpacing:1,color:'#fbbf24',border:'1px solid rgba(251,191,36,0.5)',borderRadius:4,padding:'1px 5px'}}>⭐ HOF</span>}</span>
               <span style={{fontFamily:'monospace',fontSize:11,color:'#64748b',whiteSpace:'nowrap'}}>{r.career?((r.career.war||0).toFixed(1)+' WAR'):''}</span>
             </div>))}
             {lgRet.length>12&&<div style={{fontSize:11,color:'#475569',marginTop:4}}>…and {lgRet.length-12} more hang up their spikes.</div>}
@@ -8345,6 +8381,38 @@ function FranchiseScreen({players,onExit}){
   }
 
   // ── ALL-TIME RECORDS ───────────────────────────────────────
+  if(view==='hof'){
+    const inductees=(fr.hof||[]).slice().sort((a,b)=>(a.season-b.season)||(((b.career&&b.career.war)||0)-((a.career&&a.career.war)||0)));
+    const TN=id=>{const t=MLB_TEAMS.find(x=>x.id===id);return t?(t.city+' '+t.name):id;};
+    return (<div style={wrap}><div style={{maxWidth:900,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+        <button style={ghost} onClick={()=>setView('home')}>← Back</button>
+        <div className="serif" style={{fontSize:24,fontWeight:900,color:'#fbbf24',fontFamily:'Georgia,serif'}}>🏛️ Hall of Fame</div>
+        <div style={{width:64}}></div>
+      </div>
+      {inductees.length===0
+        ?(<div style={{...card,padding:'40px 20px',textAlign:'center',color:'#475569',marginTop:12,lineHeight:1.7}}>
+            <div style={{fontSize:30,marginBottom:8}}>🏛️</div>
+            The Hall awaits its first legends.<br/>Careers are still being written — greatness is judged at retirement.
+          </div>)
+        :(<>
+          <div style={{fontSize:11,color:'#475569',marginBottom:12,textAlign:'center'}}>{inductees.length} enshrined · elected on career greatness at retirement</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(250px,1fr))',gap:12}}>
+          {inductees.map((m,i)=>{const c=m.career||{};const me=m.teamId===fr.userTeamId;
+            const line=m.isPit
+              ?((c.w||0)+'-'+(c.l||0)+' · '+(c.ip?(c.er*9/c.ip).toFixed(2):'—')+' ERA · '+(c.so||0)+' K'+((c.sv||0)>=50?(' · '+c.sv+' SV'):''))
+              :(((c.ab?(c.h/c.ab):0).toFixed(3).replace(/^0\./,'.'))+' · '+(c.hr||0)+' HR · '+(c.rbi||0)+' RBI · '+(c.sb||0)+' SB');
+            return (<div key={m.name+i} style={{background:'linear-gradient(160deg,rgba(251,191,36,0.10),rgba(120,72,10,0.08))',border:'1px solid '+(me?'#f59e0b':'rgba(251,191,36,0.35)'),borderRadius:12,padding:'14px 16px'}}>
+              <div className="serif" style={{fontSize:17,fontWeight:900,color:me?'#f59e0b':'#fde68a',fontFamily:'Georgia,serif'}}>{me?'✦ ':''}{m.name}</div>
+              <div style={{fontSize:10,color:'#94a3b8',margin:'2px 0 6px'}}>{TN(m.teamId)} · inducted after Season {m.season}</div>
+              <div style={{fontFamily:'monospace',fontSize:11,color:'#e2e8f0'}}>{line}</div>
+              <div style={{fontSize:10,color:'#64748b',marginTop:4}}>{c.seasons||0} seasons · {(c.war||0).toFixed(1)} career WAR · retired at {m.age}</div>
+            </div>);})}
+          </div>
+        </>)}
+    </div></div>);
+  }
+
   if(view==='records'){
     const R=fr.records;
     if(!R||!R.hitting) return (<div style={wrap}><div style={{maxWidth:760,margin:'0 auto'}}><button style={ghost} onClick={()=>setView('home')}>← Back</button><div style={{...card,padding:40,textAlign:'center',color:'#475569',marginTop:12}}>Complete a season to start setting all-time records.</div></div></div>);
@@ -8366,6 +8434,11 @@ function FranchiseScreen({players,onExit}){
         <div className="serif" style={{fontSize:24,fontWeight:900,color:'#f59e0b',fontFamily:'Georgia,serif'}}>All-Time Records</div>
         <div style={{width:64}}></div>
       </div>
+      <div style={{display:'flex',gap:6,justifyContent:'center',marginBottom:12}}>
+        <button onClick={()=>setRecTab('season')} style={navTab(recTab==='season')}>Single Season</button>
+        <button onClick={()=>setRecTab('career')} style={navTab(recTab==='career')}>Career</button>
+      </div>
+      {recTab==='season'&&(<>
       <div style={{fontSize:11,color:'#475569',marginBottom:12}}>Best individual single-season performances in franchise history. Year shown next to each.</div>{(()=>{const champs=(fr.history||[]).filter(h=>h.champion).slice().reverse();if(!champs.length)return null;return (<div style={{...card,padding:'12px 14px',marginBottom:14}}><div style={{fontSize:11,letterSpacing:2,color:'#fbbf24',fontWeight:800,marginBottom:8}}>🏆 WORLD SERIES CHAMPIONS</div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'3px 16px'}}>{champs.map(h=>{const t=MLB_TEAMS.find(x=>x.id===h.champion);const me=h.champion===fr.userTeamId;return (<div key={h.season} style={{display:'flex',fontSize:12,padding:'2px 0',color:me?'#f59e0b':'#cbd5e1',fontWeight:me?800:500}}><span style={{color:'#64748b',width:34}}>'{String(h.season).padStart(2,'0')}</span><span style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{me?'✦ ':''}{t?t.city+' '+t.name:h.champion}</span></div>);})}</div></div>);})()}{(()=>{const rows=[];(fr.history||[]).forEach(h=>{(h.standings||[]).forEach(x=>rows.push({season:h.season,id:x.id,w:x.w,l:x.l}));});
       if(!rows.length)return null;
       const best=[...rows].sort((a,b)=>b.w-a.w||a.l-b.l).slice(0,5);
@@ -8378,6 +8451,29 @@ function FranchiseScreen({players,onExit}){
         <div><div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:3,borderBottom:'1px solid #1e3a5f',paddingBottom:2}}>Worst Records</div>{worst.map(Row)}</div>
       </div></div>);})()}
       <div style={{display:'grid',gridTemplateColumns:'1fr',gap:14}}>{Block(hitCats,'h')}{Block(pitCats,'p')}</div>
+      </>)}
+      {recTab==='career'&&(()=>{
+        const pool=frCareerPool(fr);
+        const hp=pool.filter(x=>!x.isPit),pp=pool.filter(x=>x.isPit);
+        const hitC=[['Home Runs','hr',0],['RBI','rbi',0],['Hits','h',0],['Runs','r',0],['Stolen Bases','sb',0],['Batting Avg','cavg',3,{ab:1500}],['WAR','war',1]];
+        const pitC=[['Wins','w',0],['Strikeouts','so',0],['Saves','sv',0],['Innings','ip',0],['ERA','cera',2,{ip:600}],['WAR','war',1]];
+        const CB=(cats,arr,side)=>(<div style={{...card,padding:'12px 14px'}}>
+          <div style={{fontSize:11,letterSpacing:2,color:side==='h'?'#60a5fa':'#a78bfa',fontWeight:800,marginBottom:8}}>{side==='h'?'HITTING — CAREER':'PITCHING — CAREER'}</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(195px,1fr))',gap:'12px 16px'}}>
+          {cats.map(c=>{const rows=frCareerTop(arr,c[1],5,c[3]);return (<div key={c[1]}>
+            <div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:3,borderBottom:'1px solid #1e3a5f',paddingBottom:2}}>{c[0]}</div>
+            {rows.map((r,ri2)=>(<div key={ri2} style={{display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}>
+              <span style={{width:13,color:'#475569'}}>{ri2+1}</span>
+              <span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.name}{r.active?'*':''}</span>
+              <span style={{color:'#64748b',fontSize:9,width:30}}>{r.yrs}yr</span>
+              <span style={{fontFamily:'monospace',width:50,textAlign:'right'}}>{fmt(r.value,c[2])}</span></div>))}
+            {rows.length===0&&<div style={{fontSize:10,color:'#475569',padding:'2px 0'}}>— no qualifiers yet</div>}
+          </div>);})}
+          </div></div>);
+        return (<>
+          <div style={{fontSize:11,color:'#475569',marginBottom:12}}>Career totals across franchise history — active players (*) alongside retired legends. Rate stats need 1500 AB / 600 IP.</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr',gap:14}}>{CB(hitC,hp,'h')}{CB(pitC,pp,'p')}</div>
+        </>);})()}
     </div></div>);
   }
 
@@ -8458,6 +8554,7 @@ function FranchiseScreen({players,onExit}){
       <button onClick={()=>{setSel(fr.userTeamId);setStatMode('season');setView('team');}} style={navTab(false)}>My Team</button>
       <button onClick={()=>{setLeadSeason((fr.history&&fr.history.length)?fr.history[fr.history.length-1].season:fr.season);setView('leaders');}} style={navTab(false)}>📊 League Leaders</button>
       <button onClick={()=>setView('records')} style={navTab(false)}>🏆 All-Time Records</button>
+        <button onClick={()=>setView('hof')} style={navTab(false)}>🏛️ Hall of Fame</button>
     </div>
 
     <div style={{...card,padding:'14px 18px',marginBottom:16,borderColor:'#1e3a5f'}}>
