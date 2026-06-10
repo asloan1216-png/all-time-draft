@@ -7527,7 +7527,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v5 — fantasy draft, season sim, stats & history, AL/NL standings tabs
+// FRANCHISE MODE v6 — records & stats now driven by roster quality + season form
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -7774,10 +7774,10 @@ function frUpdateRecords(prev,allHit,allPit,season){
 function frGenerateSeasonStats(fr){
   const season=fr.season,allHit=[],allPit=[],teams={};
   Object.entries(fr.teams).forEach(([tid,team])=>{
-    const w=team.record.w,l=team.record.l,twp=(w+l)?w/(w+l):0.5,ros={};
-    FR_HIT_SLOTS.forEach(s=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatHitter(p,twp);ros[s]={...p,seasonStats:line,career:frAccCareer(p.career,line,false)};allHit.push({name:p.name,teamId:tid,line});});
-    FR_SP_SLOTS.forEach((s,i)=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatPitcher(p,'SP',i,twp,w);ros[s]={...p,seasonStats:line,career:frAccCareer(p.career,line,true)};allPit.push({name:p.name,teamId:tid,line});});
-    FR_RP_SLOTS.forEach((s,i)=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatPitcher(p,'RP',i,twp,w);ros[s]={...p,seasonStats:line,career:frAccCareer(p.career,line,true)};allPit.push({name:p.name,teamId:tid,line});});
+    const w=team.record.w,l=team.record.l,twp=(w+l)?w/(w+l):0.5,wAdj=1+(twp-0.5),ros={};
+    FR_HIT_SLOTS.forEach(s=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatHitter(p,twp);line.war=Math.round(Math.max(-2,Math.min(13.5,line.war*wAdj))*10)/10;ros[s]={...p,seasonStats:line,career:frAccCareer(p.career,line,false)};allHit.push({name:p.name,teamId:tid,line});});
+    FR_SP_SLOTS.forEach((s,i)=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatPitcher(p,'SP',i,twp,w);line.war=Math.round(Math.max(-2,Math.min(13.5,line.war*wAdj))*10)/10;ros[s]={...p,seasonStats:line,career:frAccCareer(p.career,line,true)};allPit.push({name:p.name,teamId:tid,line});});
+    FR_RP_SLOTS.forEach((s,i)=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatPitcher(p,'RP',i,twp,w);line.war=Math.round(Math.max(-2,Math.min(13.5,line.war*wAdj))*10)/10;ros[s]={...p,seasonStats:line,career:frAccCareer(p.career,line,true)};allPit.push({name:p.name,teamId:tid,line});});
     teams[tid]={...team,roster:ros};
   });
   const leaders=frComputeLeaders(allHit,allPit);
@@ -7785,6 +7785,16 @@ function frGenerateSeasonStats(fr){
   const history=[...(fr.history||[]),{season,leaders,standings}];
   const records=frUpdateRecords(fr.records,allHit,allPit,season);
   return {...fr,teams,history,records,statsGenerated:season};
+}
+
+function frTeamWAR(roster){return [...FR_HIT_SLOTS,...FR_SP_SLOTS,...FR_RP_SLOTS].reduce((s,sl)=>s+(roster[sl]?(roster[sl].avgWARperYear||0):0),0);}
+// Per-season team strength: a small edge from roster quality (snake drafts make rosters nearly
+// equal) plus a per-season 'form' swing, so records spread realistically and re-shuffle yearly.
+function frSeasonStrengths(fr){
+  const war={};let sum=0;MLB_TEAMS.forEach(t=>{war[t.id]=frTeamWAR(fr.teams[t.id].roster);sum+=war[t.id];});
+  const avg=sum/MLB_TEAMS.length,out={};
+  MLB_TEAMS.forEach(t=>{out[t.id]=frClamp(0.5+(war[t.id]-avg)*2.5/162+frGauss(0,0.058),0.34,0.66);});
+  return out;
 }
 
 function FranchiseScreen({players,onExit}){
@@ -7833,8 +7843,9 @@ function FranchiseScreen({players,onExit}){
   }
   function doSim(n){
     if(n<=0)return;
-    const strengths={};MLB_TEAMS.forEach(t=>strengths[t.id]=frTeamStrength(fr.teams[t.id].roster));
-    const nf=frSimDays(fr,n,strengths);
+    let f=fr;
+    if(f.seasonWpctSeason!==f.season){const sw=frSeasonStrengths(f);f={...f,seasonWpct:sw,seasonWpctSeason:f.season};}
+    const nf=frSimDays(f,n,f.seasonWpct);
     saveFranchise(nf);setFr(nf);
   }
   function startOver(){if(!window.confirm('Delete your franchise and start over? This cannot be undone.'))return;deleteFranchise();setFr(null);setDraft(null);setPickTeam(null);setPickLen(null);setView('setup');}
