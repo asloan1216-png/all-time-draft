@@ -7578,7 +7578,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v8 — season awards, postseason polish, team records
+// FRANCHISE MODE v9 — aging, retirement & offseason free agency
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -7634,6 +7634,69 @@ function frAiStep(d){
   return pick?frApplyPick(d,pick,tid):{...d,done:true};
 }
 function frAssignAge(){const bands=[[22,24,0.15],[25,28,0.42],[29,31,0.28],[32,35,0.15]];const r=Math.random();let c=0;for(const[lo,hi,p]of bands){c+=p;if(r<c)return lo+Math.floor(Math.random()*(hi-lo+1));}return 28;}
+// ── AGING, RETIREMENT & FREE AGENCY ──
+const FR_AGE_MULT={21:0.78,22:0.84,23:0.89,24:0.93,25:0.97,26:1,27:1,28:1,29:1,30:0.97,31:0.94,32:0.90,33:0.85,34:0.79,35:0.72,36:0.64,37:0.56,38:0.47,39:0.38,40:0.30,41:0.24};
+function frAgeMult(a){if(a==null)return 1;if(a<21)return 0.75;if(a>41)return 0.18;return FR_AGE_MULT[a]!=null?FR_AGE_MULT[a]:1;}
+function frEffWAR(p){return Math.max(0,(p.avgWARperYear||0)*frAgeMult(p.age));}
+function frRetireChance(age,talent){const T={34:0.06,35:0.12,36:0.22,37:0.38,38:0.55,39:0.72,40:0.85,41:0.95};let c=age>=42?1:(T[age]||0);if(talent>=5)c*=0.75;return c;}
+const FR_ALL_SLOTS=[...FR_HIT_SLOTS,...FR_SP_SLOTS,...FR_RP_SLOTS];
+function frBuildOffseason(fr,playersAll){
+  const teams={};const retirees=[];const retiredNames=[...(fr.retiredNames||[])];
+  Object.entries(fr.teams).forEach(([tid,t])=>{
+    const ros={...t.roster};
+    FR_ALL_SLOTS.forEach(sl=>{const p=ros[sl];if(!p)return;
+      const newAge=(p.age||27)+1;
+      if(frRnd()<frRetireChance(newAge,p.avgWARperYear||0)){
+        retirees.push({name:p.name,teamId:tid,slot:sl,age:newAge,war:p.avgWARperYear||0,career:p.career||null});
+        retiredNames.push(p.name);ros[sl]=null;
+      } else ros[sl]={...p,age:newAge};
+    });
+    teams[tid]={...t,roster:ros};
+  });
+  retirees.sort((a,b)=>((b.teamId===fr.userTeamId)-(a.teamId===fr.userTeamId))||(((b.career&&b.career.war)||0)-((a.career&&a.career.war)||0)));
+  const taken=new Set(retiredNames);
+  Object.values(teams).forEach(t=>FR_ALL_SLOTS.forEach(sl=>{if(t.roster[sl])taken.add(t.roster[sl].name);}));
+  const avail=frDedupPool(playersAll).filter(p=>!taken.has(p.name)).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
+  const faAges={};const market=avail.slice(0,320).map(p=>{faAges[p.name]=23+Math.floor(frRnd()*7);return p.name;});
+  return {...fr,teams,retiredNames,offseason:{stage:'retire',season:fr.season,retirees,market,faAges,signedLog:[]}};
+}
+function frSlotFits(p,sl){
+  if(FR_SP_SLOTS.includes(sl))return p.type==='pitcher'&&p.role==='SP';
+  if(FR_RP_SLOTS.includes(sl))return p.type==='pitcher'&&p.role==='RP';
+  if(p.type!=='hitter')return false;
+  if(sl==='dh')return true;
+  return (p.eligiblePositions||[]).includes(FR_SLOT_POS[sl]);
+}
+function frSignCompact(p,sl,age){const np=frCompact(p,sl);np.age=age;return np;}
+function frFillVacancies(fr,playersAll,teamIds){
+  const os=fr.offseason||{};
+  const taken=new Set(fr.retiredNames||[]);
+  Object.values(fr.teams).forEach(t=>FR_ALL_SLOTS.forEach(sl=>{if(t.roster[sl])taken.add(t.roster[sl].name);}));
+  let avail=frDedupPool(playersAll).filter(p=>!taken.has(p.name)).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
+  const order=(teamIds||MLB_TEAMS.map(t=>t.id)).slice().sort((a,b)=>((fr.teams[a].record&&fr.teams[a].record.w)||0)-((fr.teams[b].record&&fr.teams[b].record.w)||0));
+  const teams={...fr.teams};const signedLog=[...((os&&os.signedLog)||[])];
+  order.forEach(tid=>{
+    const ros={...teams[tid].roster};
+    FR_ALL_SLOTS.forEach(sl=>{
+      if(ros[sl])return;
+      let idx=avail.findIndex(p=>frSlotFits(p,sl));
+      if(idx<0)idx=avail.findIndex(p=>(FR_HIT_SLOTS.includes(sl)?p.type==='hitter':p.type==='pitcher'));
+      if(idx<0)return;
+      const p=avail[idx];avail=avail.filter((_,i)=>i!==idx);
+      const age=(os.faAges&&os.faAges[p.name])||(23+Math.floor(frRnd()*7));
+      ros[sl]=frSignCompact(p,sl,age);
+      signedLog.push({teamId:tid,name:p.name,age,slot:sl});
+    });
+    teams[tid]={...teams[tid],roster:ros};
+  });
+  return {...fr,teams,offseason:fr.offseason?{...fr.offseason,signedLog}:fr.offseason};
+}
+function frMigrateAges(f){
+  if(!f||!f.teams)return f;let ch=false;const teams={};
+  Object.entries(f.teams).forEach(([id,t])=>{const ros={...t.roster};FR_ALL_SLOTS.forEach(sl=>{const p=ros[sl];if(p&&p.age==null){ros[sl]={...p,age:24+Math.floor(frRnd()*10)};ch=true;}});teams[id]={...t,roster:ros};});
+  if(!ch)return f;return {...f,teams,retiredNames:f.retiredNames||[],retired:f.retired||[]};
+}
+
 function frCompact(p,slot){return {id:p.id,name:p.name,team:p.team,decade:p.decade,type:p.type,role:p.role||null,eligiblePositions:p.eligiblePositions||[],stats:p.stats||{},avgWARperYear:p.avgWARperYear||0,assignedPos:FR_SLOT_POS[slot]||(slot.startsWith('sp')?'SP':'RP'),age:frAssignAge()};}
 function frFinalize(d,userTeamId,length){
   const teams={};
@@ -7743,8 +7806,15 @@ const frClamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const frR0=x=>Math.round(x);
 
 function frStatHitter(card,teamWpct){
-  const c=card.stats||{};
-  let avail=1; const inj=frRnd(); if(inj<0.10)avail=0.45+frRnd()*0.35; else if(inj<0.22)avail=0.78+frRnd()*0.12;
+  const c0=card.stats||{};
+  const am=frAgeMult(card.age);
+  // Age curve: rates decay toward league level outside a player's prime
+  const c={...c0,
+    avg:FR_LG.avg+(((c0.avg!=null)?c0.avg:FR_LG.avg)-FR_LG.avg)*am,
+    obp:FR_LG.obp+(((c0.obp!=null)?c0.obp:FR_LG.obp)-FR_LG.obp)*am,
+    slg:FR_LG.slg+(((c0.slg!=null)?c0.slg:FR_LG.slg)-FR_LG.slg)*am,
+    hr:(c0.hr||10)*am, bsr:(c0.bsr||0)*Math.max(0,am*am)};
+  let avail=1; const injB=(card.age||27)>=35?0.07:0; const inj=frRnd(); if(inj<0.10+injB)avail=0.45+frRnd()*0.35; else if(inj<0.22+injB)avail=0.78+frRnd()*0.12;
   const PA=frClamp(frR0((618+frRnd()*64)*avail),120,720);
   const sAVG=frClamp((c.avg||FR_LG.avg)*0.82+FR_LG.avg*0.18+frGauss(0,0.019),0.185,0.380);
   let sOBP=frClamp((c.obp||FR_LG.obp)*0.88+FR_LG.obp*0.12+frGauss(0,0.022),sAVG+0.012,0.500);
@@ -7773,15 +7843,21 @@ function frStatHitter(card,teamWpct){
   const RBI=frClamp(frR0(HR*1.05+(H-HR)*0.28+(sSLG-0.400)*150+teamOff*38+frGauss(0,6)),18,150);
   const SO=frClamp(frR0(PA*frClamp(0.15+iso*0.55-(sAVG-0.250)*0.9,0.08,0.36)),20,260);
   const fAVG=H/AB, fOBP=(H+BB+HBP)/(AB+BB+HBP+SF), fSLG=realTB/AB;
-  const WAR=frClamp((card.avgWARperYear||1)*frGauss(1.0,0.26)*avail+(HR>42?0.6:0)+(fOBP>0.400?0.6:0),-1.5,12);
+  const WAR=frClamp((card.avgWARperYear||1)*am*frGauss(1.0,0.26)*avail+(HR>42?0.6:0)+(fOBP>0.400?0.6:0),-1.5,12);
   return {g:frR0(PA/4.32),pa:PA,ab:AB,r:R,h:H,d:D2,t:T3,hr:HR,rbi:RBI,bb:BB,so:SO,sb:SB,cs:CS,
           avg:+fAVG.toFixed(3),obp:+fOBP.toFixed(3),slg:+fSLG.toFixed(3),ops:+(fOBP+fSLG).toFixed(3),war:+WAR.toFixed(1)};
 }
 
 function frStatPitcher(card,role,slotIdx,teamWpct,teamWins){
-  const c=card.stats||{};const lgERA=4.10;
+  const c0=card.stats||{};const lgERA=4.10;
+  const am=frAgeMult(card.age);
+  const c={...c0,
+    era:lgERA+(((c0.era!=null)?c0.era:lgERA)-lgERA)*am,
+    fip:lgERA+(((c0.fip!=null)?c0.fip:((c0.era!=null)?c0.era:lgERA))-lgERA)*am,
+    k9:(c0.k9||7.8)*(0.75+0.25*am),
+    whip:1.30+(((c0.whip!=null)?c0.whip:1.25)-1.30)*am};
   if(role==='SP'){
-    let avail=1; const inj=frRnd(); if(inj<0.12)avail=0.5+frRnd()*0.35; else if(inj<0.24)avail=0.8+frRnd()*0.12;
+    let avail=1; const injB=(card.age||27)>=35?0.08:0; const inj=frRnd(); if(inj<0.12+injB)avail=0.5+frRnd()*0.35; else if(inj<0.24+injB)avail=0.8+frRnd()*0.12;
     const baseStarts=[33,32,31,30,28][slotIdx]||27;
     const GS=frClamp(frR0(baseStarts*avail+frGauss(0,1.5)),6,35);
     const IP=frClamp(+(GS*frGauss(5.95,0.45)).toFixed(1),30,250);
@@ -7798,7 +7874,7 @@ function frStatPitcher(card,role,slotIdx,teamWpct,teamWins){
     const W=frClamp(frR0(GS*expWRate*frGauss(1.0,0.10)),0,27);
     const L=frClamp(frR0(GS*expLRate*frGauss(1.0,0.12)),0,23);
     const WHIP=+((H+BB)/IP).toFixed(2);
-    const WAR=frClamp((card.war||card.avgWARperYear||2)*frGauss(1.0,0.24)*avail,-1.2,11);
+    const WAR=frClamp((card.war||card.avgWARperYear||2)*am*frGauss(1.0,0.24)*avail,-1.2,11);
     return {role:'SP',g:GS,gs:GS,w:W,l:L,sv:0,ip:IP,h:H,er:ER,bb:BB,so:K,
             era:+sERA.toFixed(2),fip:+sFIP.toFixed(2),whip:WHIP,war:+WAR.toFixed(1)};
   } else {
@@ -7816,7 +7892,7 @@ function frStatPitcher(card,role,slotIdx,teamWpct,teamWins){
     const HLD=isCloser?frClamp(frR0(frRnd()*6),0,10):frClamp(frR0(14+frRnd()*16),0,38);
     const W=frClamp(frR0(2+frRnd()*6),0,11),L=frClamp(frR0(1+frRnd()*6),0,10);
     const WHIP=+((H+BB)/IP).toFixed(2);
-    const WAR=frClamp((card.war||card.avgWARperYear||1)*frGauss(1.0,0.3),-1,5.5);
+    const WAR=frClamp((card.war||card.avgWARperYear||1)*am*frGauss(1.0,0.3),-1,5.5);
     return {role:'RP',g:G,gs:0,w:W,l:L,sv:SV,hld:HLD,ip:IP,h:H,er:ER,bb:BB,so:K,
             era:+sERA.toFixed(2),fip:+sFIP.toFixed(2),whip:WHIP,war:+WAR.toFixed(1)};
   }
@@ -7876,7 +7952,7 @@ function frGenerateSeasonStats(fr){
   return {...fr,teams,history,records,statsGenerated:season};
 }
 
-function frTeamWAR(roster){return [...FR_HIT_SLOTS,...FR_SP_SLOTS,...FR_RP_SLOTS].reduce((s,sl)=>s+(roster[sl]?(roster[sl].avgWARperYear||0):0),0);}
+function frTeamWAR(roster){return [...FR_HIT_SLOTS,...FR_SP_SLOTS,...FR_RP_SLOTS].reduce((s,sl)=>s+(roster[sl]?frEffWAR(roster[sl]):0),0);}
 // Per-season team strength: a small edge from roster quality (snake drafts make rosters nearly
 // equal) plus a per-season 'form' swing, so records spread realistically and re-shuffle yearly.
 function frSeasonStrengths(fr){
@@ -7887,7 +7963,7 @@ function frSeasonStrengths(fr){
 }
 
 function FranchiseScreen({players,onExit}){
-  const [fr,setFr]=useState(()=>loadFranchise());
+  const [fr,setFr]=useState(()=>frMigrateAges(loadFranchise()));
   const [view,setView]=useState(fr?'home':'setup');
   const [pickTeam,setPickTeam]=useState(null);
   const [pickLen,setPickLen]=useState(null);
@@ -7898,6 +7974,7 @@ function FranchiseScreen({players,onExit}){
   const [statMode,setStatMode]=useState('season');
   const [leadSeason,setLeadSeason]=useState(null);
   const [stLg,setStLg]=useState(null);
+  const [faSlot,setFaSlot]=useState(null);
   const poolRef=useRef(null);
   if(!poolRef.current)poolRef.current=frDedupPool(players);
   const pool=poolRef.current;
@@ -7961,9 +8038,20 @@ function FranchiseScreen({players,onExit}){
     const nf=poPatch({...f,playoffs:po},po);
     saveFranchise(nf);setFr(nf);
   }
-  function nextSeason(){
-    const teams={};Object.entries(fr.teams).forEach(([id,t])=>teams[id]={...t,record:{w:0,l:0}});
-    const nf={...fr,season:fr.season+1,gamesPlayed:0,teams,playoffs:null};saveFranchise(nf);setFr(nf);setSimN(10);setView('home');
+  function nextSeason(base){
+    const src=(base&&base.teams)?base:fr;
+    const teams={};Object.entries(src.teams).forEach(([id,t])=>teams[id]={...t,record:{w:0,l:0}});
+    const nf={...src,season:src.season+1,gamesPlayed:0,teams,playoffs:null,offseason:null};saveFranchise(nf);setFr(nf);setSimN(10);setView('home');
+  }
+  function enterOffseason(){
+    if(!fr.offseason){const nf=frBuildOffseason(fr,players);saveFranchise(nf);setFr(nf);}
+    setView('offseason');
+  }
+  function finishOffseason(){
+    const os=fr.offseason;if(!os)return;
+    let nf=frFillVacancies(fr,players,MLB_TEAMS.map(t=>t.id));
+    nf={...nf,retired:[...(fr.retired||[]),...os.retirees.map(r=>({name:r.name,teamId:r.teamId,age:r.age,career:r.career,season:os.season}))],offseason:null};
+    nextSeason(nf);
   }
 
   const card={background:'rgba(8,16,32,0.8)',border:'1px solid #0f1f35',borderRadius:12};
@@ -8132,6 +8220,89 @@ function FranchiseScreen({players,onExit}){
   }
 
   // ── LEAGUE LEADERS ─────────────────────────────────────────
+  if(view==='offseason'&&fr.offseason){
+    const os=fr.offseason;
+    const SLOT_LABEL=sl=>FR_SP_SLOTS.includes(sl)?sl.toUpperCase():FR_RP_SLOTS.includes(sl)?(sl==='rp1'?'CL':sl.toUpperCase()):(FR_SLOT_POS[sl]||sl.toUpperCase());
+    const myRet=os.retirees.filter(r=>r.teamId===fr.userTeamId);
+    const lgRet=os.retirees.filter(r=>r.teamId!==fr.userTeamId);
+    const userRoster=fr.teams[fr.userTeamId].roster;
+    const myVac=FR_ALL_SLOTS.filter(sl=>!userRoster[sl]);
+    const TN=id=>{const t=MLB_TEAMS.find(x=>x.id===id);return t?t.name:id;};
+    if(os.stage==='retire'){
+      return (<div style={wrap}><div style={{maxWidth:760,margin:'0 auto'}}>
+        <div style={{textAlign:'center',marginBottom:14}}>
+          <div style={{fontSize:11,letterSpacing:3,color:'#64748b',fontWeight:800}}>OFFSEASON · WINTER AFTER SEASON {os.season}</div>
+          <div className="serif" style={{fontSize:30,fontWeight:900,color:'#93c5fd',fontFamily:'Georgia,serif'}}>📜 Retirements</div>
+        </div>
+        <div style={{...card,padding:'14px 16px',marginBottom:14}}>
+          {os.retirees.length===0&&<div style={{color:'#94a3b8',fontSize:13,textAlign:'center',padding:'10px 0'}}>No retirements this winter — every roster returns intact.</div>}
+          {myRet.length>0&&<div style={{marginBottom:10}}>
+            <div style={{fontSize:10,letterSpacing:2,color:'#f59e0b',fontWeight:800,marginBottom:6}}>YOUR CLUBHOUSE</div>
+            {myRet.map((r,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:13,padding:'3px 0',color:'#f59e0b',fontWeight:700}}>
+              <span>{r.name} <span style={{color:'#64748b',fontWeight:400,fontSize:11}}>retires at {r.age}</span></span>
+              <span style={{fontFamily:'monospace',fontSize:11,color:'#94a3b8',whiteSpace:'nowrap'}}>{r.career?((r.career.war||0).toFixed(1)+' WAR · '+r.career.seasons+' yrs'):''}</span>
+            </div>))}
+          </div>}
+          {lgRet.length>0&&<div>
+            <div style={{fontSize:10,letterSpacing:2,color:'#94a3b8',fontWeight:800,marginBottom:6,borderTop:myRet.length?'1px solid #1e3a5f':'none',paddingTop:myRet.length?10:0}}>AROUND THE LEAGUE</div>
+            {lgRet.slice(0,12).map((r,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:12,padding:'2.5px 0',color:'#cbd5e1'}}>
+              <span>{r.name} <span style={{color:'#475569',fontSize:10}}>{TN(r.teamId)} · age {r.age}</span></span>
+              <span style={{fontFamily:'monospace',fontSize:11,color:'#64748b',whiteSpace:'nowrap'}}>{r.career?((r.career.war||0).toFixed(1)+' WAR'):''}</span>
+            </div>))}
+            {lgRet.length>12&&<div style={{fontSize:11,color:'#475569',marginTop:4}}>…and {lgRet.length-12} more hang up their spikes.</div>}
+          </div>}
+        </div>
+        <div style={{textAlign:'center'}}><button onClick={()=>{const nf={...fr,offseason:{...os,stage:'fa'}};saveFranchise(nf);setFr(nf);setFaSlot(null);}} style={{...gold,padding:'12px 32px',fontSize:14}}>Continue to Free Agency →</button></div>
+      </div></div>);
+    }
+    const byName=(()=>{const m={};players.forEach(p=>{const cur=m[p.name];if(!cur||((p.avgWARperYear||0)>(cur.avgWARperYear||0)))m[p.name]=p;});return m;})();
+    const takenNow=new Set(fr.retiredNames||[]);Object.values(fr.teams).forEach(t=>FR_ALL_SLOTS.forEach(sl=>{if(t.roster[sl])takenNow.add(t.roster[sl].name);}));
+    const selSlot=myVac.includes(faSlot)?faSlot:(myVac[0]||null);
+    const cands=selSlot?os.market.map(n=>byName[n]).filter(p=>p&&!takenNow.has(p.name)&&frSlotFits(p,selSlot)).slice(0,28):[];
+    const signFA=(p)=>{
+      const np=frSignCompact(p,selSlot,(os.faAges&&os.faAges[p.name])||(23+Math.floor(frRnd()*7)));
+      const teams={...fr.teams,[fr.userTeamId]:{...fr.teams[fr.userTeamId],roster:{...userRoster,[selSlot]:np}}};
+      const nf={...fr,teams,offseason:{...os,signedLog:[...(os.signedLog||[]),{teamId:fr.userTeamId,name:p.name,age:np.age,slot:selSlot}]}};
+      saveFranchise(nf);setFr(nf);setFaSlot(null);
+    };
+    const autoFill=()=>{const nf=frFillVacancies(fr,players,[fr.userTeamId]);saveFranchise(nf);setFr(nf);};
+    const mySigned=(os.signedLog||[]).filter(x=>x.teamId===fr.userTeamId);
+    return (<div style={wrap}><div style={{maxWidth:820,margin:'0 auto'}}>
+      <div style={{textAlign:'center',marginBottom:12}}>
+        <div style={{fontSize:11,letterSpacing:3,color:'#64748b',fontWeight:800}}>OFFSEASON · WINTER AFTER SEASON {os.season}</div>
+        <div className="serif" style={{fontSize:30,fontWeight:900,color:'#86efac',fontFamily:'Georgia,serif'}}>🖊️ Free Agency</div>
+        <div style={{fontSize:12,color:'#64748b',marginTop:2}}>Your front office gets the first calls this winter. New signings debut young.</div>
+      </div>
+      {myVac.length===0
+        ?<div style={{...card,padding:'18px',textAlign:'center',color:'#94a3b8',fontSize:13,marginBottom:14}}>Your roster returns intact — no openings to fill.</div>
+        :(<div style={{...card,padding:'14px 16px',marginBottom:14}}>
+          <div style={{fontSize:10,letterSpacing:2,color:'#86efac',fontWeight:800,marginBottom:8}}>YOUR OPENINGS · {myVac.length} TO FILL</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>
+            {myVac.map(sl=>(<button key={sl} onClick={()=>setFaSlot(sl)} style={navTab(sl===selSlot)}>{SLOT_LABEL(sl)}</button>))}
+          </div>
+          {selSlot&&<div>
+            <div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:4,borderBottom:'1px solid #1e3a5f',paddingBottom:3}}>TOP FREE AGENTS — {SLOT_LABEL(selSlot)}</div>
+            <div style={{maxHeight:340,overflowY:'auto'}}>
+            {cands.map(p=>{const a=os.faAges&&os.faAges[p.name];const st=p.stats||{};return (
+              <div key={p.name} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,padding:'4px 0',borderBottom:'1px solid #0a1828',color:'#e2e8f0'}}>
+                <span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',fontWeight:700}}>{p.name} <span style={{color:'#475569',fontWeight:400,fontSize:10}}>{p.decade}</span></span>
+                <span style={{color:'#94a3b8',fontSize:11,width:48}}>age {a||'?'}</span>
+                <span style={{fontFamily:'monospace',fontSize:11,color:'#94a3b8',width:118,textAlign:'right'}}>{p.type==='hitter'?(((st.avg!=null)?st.avg.toFixed(3).replace(/^0\./,'.'):'—')+' · '+(st.hr||0)+' HR'):(((st.era!=null)?st.era.toFixed(2):'—')+' ERA · '+((st.k9!=null)?st.k9.toFixed(1):'—')+' K/9')}</span>
+                <span style={{fontFamily:'monospace',fontSize:11,color:'#f59e0b',width:54,textAlign:'right'}}>{(p.avgWARperYear||0).toFixed(1)} W</span>
+                <button onClick={()=>signFA(p)} style={{background:'#86efac',color:'#04130a',border:'none',borderRadius:6,padding:'5px 12px',fontWeight:800,fontSize:11,cursor:'pointer'}}>Sign</button>
+              </div>);})}
+            {cands.length===0&&<div style={{color:'#64748b',fontSize:12,padding:'8px 0'}}>No eligible free agents left for this spot — use Auto-fill.</div>}
+            </div>
+          </div>}
+        </div>)}
+      <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
+        {myVac.length>0&&<button onClick={autoFill} style={ghost}>Auto-fill remaining ({myVac.length})</button>}
+        <button onClick={finishOffseason} disabled={myVac.length>0} style={{...gold,padding:'12px 30px',fontSize:14,opacity:myVac.length>0?0.45:1,cursor:myVac.length>0?'not-allowed':'pointer'}}>Start Season {os.season+1} →</button>
+      </div>
+      {mySigned.length>0&&<div style={{textAlign:'center',marginTop:10,fontSize:11,color:'#86efac'}}>Signed: {mySigned.map(x=>x.name+' ('+x.age+')').join(' · ')}</div>}
+    </div></div>);
+  }
+
   if(view==='leaders'){
     const hist=fr.history||[];
     if(!hist.length) return (<div style={wrap}><div style={{maxWidth:760,margin:'0 auto'}}><button style={ghost} onClick={()=>setView('home')}>← Back</button><div style={{...card,padding:40,textAlign:'center',color:'#475569',marginTop:12}}>Complete a season to see its league leaders.</div></div></div>);
@@ -8246,7 +8417,7 @@ function FranchiseScreen({players,onExit}){
             <div className="serif" style={{fontSize:29,fontWeight:900,color:'#f59e0b',fontFamily:'Georgia,serif',margin:'2px 0'}}>🏆 {TM(po.champion)}</div>
             {po.champion===fr.userTeamId&&<div style={{fontSize:12,color:'#fbbf24',fontWeight:800,letterSpacing:2,margin:'2px 0'}}>YOUR FRANCHISE WINS IT ALL</div>}
             <div style={{fontSize:11,color:'#64748b'}}>def. {NM(po.ws.loser.id)} · {Math.max(po.ws.hiWins,po.ws.loWins)}-{Math.min(po.ws.hiWins,po.ws.loWins)}</div>
-            <button onClick={nextSeason} style={{...gold,padding:'10px 24px',fontSize:13,marginTop:10}}>Begin Season {fr.season+1} →</button>
+            <button onClick={enterOffseason} style={{...gold,padding:'10px 24px',fontSize:13,marginTop:10}}>{fr.offseason?'Resume Offseason →':'❄️ Enter Offseason →'}</button>
           </div>}
       {!po.wc&&(<div style={{marginBottom:14}}><div style={{fontSize:10,letterSpacing:2,color:'#94a3b8',fontWeight:800,marginBottom:6}}>THE FIELD</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>{SeedPanel('AL')}{SeedPanel('NL')}</div></div>)}
       {po.wc&&Round('WILD CARD · best of 3',po.wc.AL.map((sr,i)=><div key={i}>{Series(sr)}</div>),po.wc.NL.map((sr,i)=><div key={i}>{Series(sr)}</div>))}
@@ -8303,7 +8474,7 @@ function FranchiseScreen({players,onExit}){
               :<div style={{fontSize:11,color:'#94a3b8',maxWidth:180,textAlign:'right',lineHeight:1.4}}>{fr.playoffs?('Postseason underway · '+FR_PO_STAGES[Math.min(fr.playoffs.stage,3)]):'Regular season complete. The bracket is set.'}</div>}
             {(fr.playoffs&&fr.playoffs.champion)?<button onClick={()=>setView('playoffs')} style={simGhost}>View Bracket</button>:null}
             {(fr.playoffs&&fr.playoffs.champion)
-              ?<button onClick={nextSeason} style={simBtn}>Begin Season {fr.season+1} →</button>
+              ?<button onClick={enterOffseason} style={simBtn}>{fr.offseason?'Resume Offseason →':'❄️ Enter Offseason →'}</button>
               :<button onClick={()=>{if(!fr.playoffs){const nf={...fr,playoffs:frInitPlayoffs(fr)};saveFranchise(nf);setFr(nf);}setView('playoffs');}} style={simBtn}>{fr.playoffs?'Continue Postseason →':'🏆 Enter Postseason →'}</button>}
           </div>
         :<div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
