@@ -7527,7 +7527,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v4 — fantasy draft, season sim, stats & history
+// FRANCHISE MODE v5 — fantasy draft, season sim, stats & history, AL/NL standings tabs
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -7798,6 +7798,7 @@ function FranchiseScreen({players,onExit}){
   const [sel,setSel]=useState(null);
   const [statMode,setStatMode]=useState('season');
   const [leadSeason,setLeadSeason]=useState(null);
+  const [stLg,setStLg]=useState(null);
   const poolRef=useRef(null);
   if(!poolRef.current)poolRef.current=frDedupPool(players);
   const pool=poolRef.current;
@@ -8082,6 +8083,7 @@ function FranchiseScreen({players,onExit}){
   const alSeeds=seasonDone?frPlayoffSeeds(fr,'AL'):null;
   const nlSeeds=seasonDone?frPlayoffSeeds(fr,'NL'):null;
   const divisions=[['AL','East'],['AL','Central'],['AL','West'],['NL','East'],['NL','Central'],['NL','West']];
+  const curLg=stLg||meInfo.league;
   const Roster=({slots,label,accent})=>(<div style={{marginBottom:12}}><div style={{fontSize:10,letterSpacing:2,color:accent,fontWeight:800,margin:'4px 0 4px'}}>{label}</div>
     {slots.map(s=>{const p=roster[s];if(!p)return null;return (<div key={s} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'5px 10px',borderBottom:'1px solid #080f1e',fontSize:12,background:'rgba(8,16,32,0.5)'}}>
       <span style={{width:34,color:'#475569',fontSize:10,fontWeight:800}}>{p.assignedPos}</span><span style={{flex:1,color:'#e2e8f0'}}>{p.name}</span>
@@ -8132,8 +8134,14 @@ function FranchiseScreen({players,onExit}){
         <Roster slots={FR_HIT_SLOTS} label="LINEUP" accent="#60a5fa"/><Roster slots={FR_SP_SLOTS} label="ROTATION" accent="#60a5fa"/><Roster slots={FR_RP_SLOTS} label="BULLPEN" accent="#a78bfa"/>
       </div>
       <div style={{...card,padding:'14px 16px'}}>
-        <div className="serif" style={{fontSize:13,fontWeight:800,color:'#f1f5f9',marginBottom:10,fontFamily:'Georgia,serif'}}>Standings</div>
-        {divisions.map(([lg,dv])=>{const d=standings[lg+'|'+dv];const lead=d[0];const seeds=lg==='AL'?alSeeds:nlSeeds;return (<div key={lg+dv} style={{marginBottom:11}}><div style={{fontSize:9,letterSpacing:1.5,color:'#334155',fontWeight:800,marginBottom:3}}>{lg} {dv.toUpperCase()}</div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:8}}>
+          <div className="serif" style={{fontSize:13,fontWeight:800,color:'#f1f5f9',fontFamily:'Georgia,serif'}}>Standings</div>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={()=>setStLg('AL')} style={navTab(curLg==='AL')}>American</button>
+            <button onClick={()=>setStLg('NL')} style={navTab(curLg==='NL')}>National</button>
+          </div>
+        </div>
+        {divisions.filter(([lg])=>lg===curLg).map(([lg,dv])=>{const d=standings[lg+'|'+dv];const lead=d[0];const seeds=lg==='AL'?alSeeds:nlSeeds;return (<div key={lg+dv} style={{marginBottom:11}}><div style={{fontSize:9,letterSpacing:1.5,color:'#334155',fontWeight:800,marginBottom:3}}>{lg} {dv.toUpperCase()}</div>
           {d.map((t,idx)=>{const gb=idx===0?0:((lead.w-t.w)+(t.l-lead.l))/2;const isMe=t.id===fr.userTeamId;const inPO=seeds&&seeds.has(t.id);const isDivLead=idx===0&&gp>0;return (<div key={t.id} onClick={()=>{setSel(t.id);setStatMode('season');setView('team');}} style={{display:'flex',alignItems:'center',padding:'3px 8px',fontSize:11,borderRadius:5,cursor:'pointer',background:isMe?'rgba(245,158,11,0.1)':'transparent',color:isMe?'#f59e0b':'#cbd5e1',fontWeight:isMe?700:400}}>
             <span style={{flex:1}}>{(inPO||isDivLead)?<span style={{color:'#22c55e',marginRight:3}}>✦</span>:null}{t.city} {t.name}</span>
             <span style={{fontFamily:'monospace',width:54,textAlign:'right'}}>{t.w}-{t.l}</span>
