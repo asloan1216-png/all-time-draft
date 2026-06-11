@@ -7578,7 +7578,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v14 — winter draft classes: the player pool replenishes itself
+// FRANCHISE MODE v15 — smoother strength curve, draft-day ages & full eligibility on the board
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -7615,6 +7615,11 @@ function frAssign(p,r){
   if(open){r[open]=p;return open;}return null;
 }
 function frTeamOnClock(d){return d.round%2===0?d.pickInRound:(29-d.pickInRound);}
+function frAssignPreview(p,r){
+  const c={...r};frAssign(p,c);
+  for(const k of FR_ALL_SLOTS){if(c[k]&&!r[k])return k;}
+  return null;
+}
 function frApplyPick(d,player,tid){
   const rosters={...d.rosters,[tid]:{...d.rosters[tid]}};
   frAssign(player,rosters[tid]);
@@ -7786,7 +7791,7 @@ function frMigrateAges(f){
   return {...nf,retiredNames:nf.retiredNames||[],retired:nf.retired||[]};
 }
 
-function frCompact(p,slot){return {id:p.id,name:p.name,team:p.team,decade:p.decade,type:p.type,role:p.role||null,eligiblePositions:p.eligiblePositions||[],stats:p.stats||{},avgWARperYear:p.avgWARperYear||0,assignedPos:FR_SLOT_POS[slot]||(slot.startsWith('sp')?'SP':'RP'),age:frAssignAge()};}
+function frCompact(p,slot){return {id:p.id,name:p.name,team:p.team,decade:p.decade,type:p.type,role:p.role||null,eligiblePositions:p.eligiblePositions||[],stats:p.stats||{},avgWARperYear:p.avgWARperYear||0,assignedPos:FR_SLOT_POS[slot]||(slot.startsWith('sp')?'SP':'RP'),age:(p.age!=null?p.age:frAssignAge())};}
 function frFinalize(d,userTeamId,length){
   const teams={};
   MLB_TEAMS.forEach(t=>{const ros={};Object.entries(d.rosters[t.id]).forEach(([slot,p])=>{ros[slot]=frCompact(p,slot);});teams[t.id]={roster:ros,record:{w:0,l:0}};});
@@ -8138,7 +8143,12 @@ function frTeamWAR(roster){return [...FR_HIT_SLOTS,...FR_SP_SLOTS,...FR_RP_SLOTS
 function frSeasonStrengths(fr){
   const war={};let sum=0;MLB_TEAMS.forEach(t=>{war[t.id]=frTeamWAR(fr.teams[t.id].roster);sum+=war[t.id];});
   const avg=sum/MLB_TEAMS.length,out={};
-  MLB_TEAMS.forEach(t=>{out[t.id]=frClamp(0.5+(war[t.id]-avg)*2.5/162+frGauss(0,0.058),0.34,0.66);});
+  // Soft strength curve: same slope near league average (~2.4 wins per WAR),
+  // but it bends instead of hitting a hard wall. In mature leagues (aging +
+  // free agency) talent gaps grow wide; the old clamp pinned every runaway
+  // team to an identical ceiling, turning the top of the league into coin
+  // flips. tanh keeps them distinguishable while bounding the extremes.
+  MLB_TEAMS.forEach(t=>{out[t.id]=frClamp(0.5+0.185*Math.tanh((war[t.id]-avg)*0.080)+frGauss(0,0.058),0.30,0.70);});
   return out;
 }
 
@@ -8179,7 +8189,7 @@ function FranchiseScreen({players,onExit}){
     const order=[...MLB_TEAMS.map(t=>t.id)].sort(()=>Math.random()-0.5);
     const userIdx=order.indexOf(pickTeam);
     const rosters={};order.forEach(t=>rosters[t]={});
-    const avail=[...pool].sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
+    const avail=[...pool].sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).map(p=>({...p,age:frAssignAge()})); // ages visible from pick one
     setDraft({order,userIdx,rosters,avail,round:0,pickInRound:0,overall:0,log:[],done:false});
     setView('reveal');
   }
@@ -8320,10 +8330,11 @@ function FranchiseScreen({players,onExit}){
           <div style={{maxHeight:440,overflowY:'auto'}}>
           {yourTurn?list.map(p=>{const ok=frCanFill(p,myRoster);const pr=frPrimary(p);return (
             <div key={p.name} onClick={()=>ok&&userPick(p.name)} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderBottom:'1px solid #0a1424',fontSize:12,cursor:ok?'pointer':'not-allowed',opacity:ok?1:0.3,borderRadius:6}}>
-              <span style={{fontSize:9,fontWeight:800,padding:'2px 5px',borderRadius:4,fontFamily:'monospace',width:28,textAlign:'center',background:FR_POS_COLOR[pr]+'22',color:FR_POS_COLOR[pr]}}>{pr}</span>
+              <span style={{fontSize:9,fontWeight:800,padding:'2px 5px',borderRadius:4,fontFamily:'monospace',minWidth:28,textAlign:'center',background:FR_POS_COLOR[pr]+'22',color:FR_POS_COLOR[pr],whiteSpace:'nowrap'}}>{p.type==='pitcher'?pr:((p.eligiblePositions&&p.eligiblePositions.length)?p.eligiblePositions.join('/'):pr)}</span>
               <span style={{flex:1,color:'#e2e8f0',fontWeight:600}}>{p.name}</span>
-              <span style={{color:'#475569',fontSize:9}}>{(p.eligiblePositions||[]).join('/')}</span>
+              <span style={{color:'#94a3b8',fontSize:10,width:34,textAlign:'right',whiteSpace:'nowrap'}}>{p.age!=null?p.age+'yo':''}</span>
               <span style={{color:'#475569',fontFamily:'monospace',fontSize:10,marginLeft:6}}>{p.team} · {p.decade}</span>
+              {ok&&(()=>{const sl2=frAssignPreview(p,myRoster);if(!sl2)return null;const lbl=FR_SP_SLOTS.includes(sl2)?sl2.toUpperCase():FR_RP_SLOTS.includes(sl2)?(sl2==='rp1'?'CL':sl2.toUpperCase()):(FR_SLOT_POS[sl2]||sl2.toUpperCase());return <span style={{color:'#86efac',fontSize:10,fontWeight:800,width:44,textAlign:'right',whiteSpace:'nowrap'}}>→ {lbl}</span>;})()}
               <span style={{color:'#f59e0b',fontFamily:'monospace',width:42,textAlign:'right'}}>{(p.avgWARperYear||0).toFixed(1)}</span></div>);})
           :<div style={{textAlign:'center',padding:40,color:'#475569',fontSize:13}}>The AI clubs are drafting…<br/><span style={{fontSize:11}}>picks resolve automatically — your turn is coming.</span></div>}
           </div>
