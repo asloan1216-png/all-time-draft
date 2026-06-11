@@ -7578,7 +7578,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v12 — postseason stats & World Series MVP
+// FRANCHISE MODE v13 — five-year minimum careers & clickable team pages everywhere
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -7670,7 +7670,9 @@ function frBuildOffseason(fr,playersAll){
     const ros={...t.roster};
     FR_ALL_SLOTS.forEach(sl=>{const p=ros[sl];if(!p)return;
       const newAge=(p.age||27)+1;
-      if(frRnd()<frRetireChance(newAge,p.avgWARperYear||0)){
+      const yrs=(p.career&&p.career.seasons)||0;
+      // Five-year minimum: nobody retires before giving the franchise five seasons
+      if(yrs>=5&&frRnd()<frRetireChance(newAge,p.avgWARperYear||0)){
         const isPit=FR_SP_SLOTS.includes(sl)||FR_RP_SLOTS.includes(sl);
         retirees.push({name:p.name,teamId:tid,slot:sl,age:newAge,war:p.avgWARperYear||0,career:p.career||null,isPit,hof:frHofEligible(p.career,isPit)});
         retiredNames.push(p.name);ros[sl]=null;
@@ -8097,6 +8099,7 @@ function FranchiseScreen({players,onExit}){
   const [stLg,setStLg]=useState(null);
   const [faSlot,setFaSlot]=useState(null);
   const [recTab,setRecTab]=useState('season');
+  const goTeam=id=>{if(!fr||!fr.teams||!fr.teams[id])return;setSel(id);setStatMode('season');setView('team');};
   const poolRef=useRef(null);
   if(!poolRef.current)poolRef.current=frDedupPool(players);
   const pool=poolRef.current;
@@ -8448,7 +8451,7 @@ function FranchiseScreen({players,onExit}){
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(195px,1fr))',gap:'12px 16px'}}>
       {cats.map(c=>{const rows=(side==='h'?L.hitting:L.pitching)[c[1]]||[];return (<div key={c[1]}>
         <div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:3,borderBottom:'1px solid #1e3a5f',paddingBottom:2}}>{c[0]}</div>
-        {rows.slice(0,5).map((r,i)=>(<div key={i} style={{display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}>
+        {rows.slice(0,5).map((r,i)=>(<div key={i} onClick={()=>goTeam(r.teamId)} style={{cursor:'pointer',display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}>
           <span style={{width:13,color:'#475569'}}>{i+1}</span><span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.name}</span><span style={{color:'#475569',fontSize:9,width:30}}>{r.teamId}</span><span style={{fontFamily:'monospace',width:44,textAlign:'right'}}>{fmt(r.value,c[2])}</span></div>))}
       </div>);})}
       </div></div>);
@@ -8464,7 +8467,7 @@ function FranchiseScreen({players,onExit}){
       </div>
       {entry.awards&&(()=>{const A=entry.awards;const TN=id=>{const t=MLB_TEAMS.find(x=>x.id===id);return t?t.name:id;};
         const cell=(title,a,kind)=>a?(<div key={title}><div style={{fontSize:9,letterSpacing:1,color:'#94a3b8',fontWeight:800,marginBottom:2}}>{title}</div>
-          <div style={{fontSize:13,fontWeight:800,color:a.teamId===fr.userTeamId?'#f59e0b':'#e2e8f0',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.name}</div>
+          <div onClick={()=>goTeam(a.teamId)} style={{cursor:'pointer',fontSize:13,fontWeight:800,color:a.teamId===fr.userTeamId?'#f59e0b':'#e2e8f0',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.name}</div>
           <div style={{fontSize:10,color:'#64748b'}}>{TN(a.teamId)} · {kind==='h'?(fmt(a.avg,3)+' · '+a.hr+' HR · '+a.war+' WAR'):(a.w+'-'+a.l+' · '+(+a.era).toFixed(2)+' ERA · '+a.war+' WAR')}</div></div>):null;
         return (<div style={{...card,padding:'12px 14px',marginBottom:14,borderColor:'rgba(245,158,11,0.35)'}}>
           <div style={{fontSize:10,letterSpacing:2,color:'#fbbf24',fontWeight:800,marginBottom:8}}>🏅 SEASON {cur} AWARDS</div>
@@ -8474,7 +8477,7 @@ function FranchiseScreen({players,onExit}){
       {entry.po&&(()=>{const P=entry.po;const TN2=id=>{const t=MLB_TEAMS.find(x=>x.id===id);return t?t.name:id;};
         const M=P.mvp;const fa=v=>(v||0).toFixed(3).replace(/^0\./,'.');
         const col=(title,rows,fmt2)=>(<div key={title}><div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:3,borderBottom:'1px solid #1e3a5f',paddingBottom:2}}>{title}</div>
-          {(rows||[]).map((r,i)=>(<div key={i} style={{display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}><span style={{width:13,color:'#475569'}}>{i+1}</span><span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.name}</span><span style={{fontFamily:'monospace',width:46,textAlign:'right'}}>{fmt2(r.value)}</span></div>))}
+          {(rows||[]).map((r,i)=>(<div key={i} onClick={()=>goTeam(r.teamId)} style={{cursor:'pointer',display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}><span style={{width:13,color:'#475569'}}>{i+1}</span><span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.name}</span><span style={{fontFamily:'monospace',width:46,textAlign:'right'}}>{fmt2(r.value)}</span></div>))}
           {(!rows||!rows.length)&&<div style={{fontSize:10,color:'#475569'}}>—</div>}</div>);
         return (<div style={{...card,padding:'12px 14px',marginBottom:14,borderColor:'rgba(96,165,250,0.35)'}}>
           <div style={{fontSize:10,letterSpacing:2,color:'#93c5fd',fontWeight:800,marginBottom:8}}>🏆 POSTSEASON</div>
@@ -8552,7 +8555,7 @@ function FranchiseScreen({players,onExit}){
             const line=m.isPit
               ?((c.w||0)+'-'+(c.l||0)+' · '+(c.ip?(c.er*9/c.ip).toFixed(2):'—')+' ERA · '+(c.so||0)+' K'+((c.sv||0)>=50?(' · '+c.sv+' SV'):''))
               :(((c.ab?(c.h/c.ab):0).toFixed(3).replace(/^0\./,'.'))+' · '+(c.hr||0)+' HR · '+(c.rbi||0)+' RBI · '+(c.sb||0)+' SB');
-            return (<div key={m.name+i} style={{background:'linear-gradient(160deg,rgba(251,191,36,0.10),rgba(120,72,10,0.08))',border:'1px solid '+(me?'#f59e0b':'rgba(251,191,36,0.35)'),borderRadius:12,padding:'14px 16px'}}>
+            return (<div key={m.name+i} onClick={()=>goTeam(m.teamId)} style={{cursor:'pointer',background:'linear-gradient(160deg,rgba(251,191,36,0.10),rgba(120,72,10,0.08))',border:'1px solid '+(me?'#f59e0b':'rgba(251,191,36,0.35)'),borderRadius:12,padding:'14px 16px'}}>
               <div className="serif" style={{fontSize:17,fontWeight:900,color:me?'#f59e0b':'#fde68a',fontFamily:'Georgia,serif'}}>{me?'✦ ':''}{m.name}</div>
               <div style={{fontSize:10,color:'#94a3b8',margin:'2px 0 6px'}}>{TN(m.teamId)} · inducted after Season {m.season}</div>
               <div style={{fontFamily:'monospace',fontSize:11,color:'#e2e8f0'}}>{line}</div>
@@ -8574,7 +8577,7 @@ function FranchiseScreen({players,onExit}){
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:'12px 16px'}}>
       {cats.map(c=>{const rows=(side==='h'?R.hitting:R.pitching)[c[1]]||[];return (<div key={c[1]}>
         <div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:3,borderBottom:'1px solid #1e3a5f',paddingBottom:2}}>{c[0]}</div>
-        {rows.slice(0,5).map((r,i)=>(<div key={i} style={{display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}>
+        {rows.slice(0,5).map((r,i)=>(<div key={i} onClick={()=>goTeam(r.teamId)} style={{cursor:'pointer',display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}>
           <span style={{width:13,color:'#475569'}}>{i+1}</span><span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.name}</span><span style={{color:'#64748b',fontSize:9}}>'{String(r.season).padStart(2,'0')}</span><span style={{fontFamily:'monospace',width:46,textAlign:'right'}}>{fmt(r.value,c[2])}</span></div>))}
       </div>);})}
       </div></div>);
@@ -8589,11 +8592,11 @@ function FranchiseScreen({players,onExit}){
         <button onClick={()=>setRecTab('career')} style={navTab(recTab==='career')}>Career</button>
       </div>
       {recTab==='season'&&(<>
-      <div style={{fontSize:11,color:'#475569',marginBottom:12}}>Best individual single-season performances in franchise history. Year shown next to each.</div>{(()=>{const champs=(fr.history||[]).filter(h=>h.champion).slice().reverse();if(!champs.length)return null;return (<div style={{...card,padding:'12px 14px',marginBottom:14}}><div style={{fontSize:11,letterSpacing:2,color:'#fbbf24',fontWeight:800,marginBottom:8}}>🏆 WORLD SERIES CHAMPIONS</div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'3px 16px'}}>{champs.map(h=>{const t=MLB_TEAMS.find(x=>x.id===h.champion);const me=h.champion===fr.userTeamId;return (<div key={h.season} style={{display:'flex',fontSize:12,padding:'2px 0',color:me?'#f59e0b':'#cbd5e1',fontWeight:me?800:500}}><span style={{color:'#64748b',width:34}}>'{String(h.season).padStart(2,'0')}</span><span style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{me?'✦ ':''}{t?t.city+' '+t.name:h.champion}</span></div>);})}</div></div>);})()}{(()=>{const rows=[];(fr.history||[]).forEach(h=>{(h.standings||[]).forEach(x=>rows.push({season:h.season,id:x.id,w:x.w,l:x.l}));});
+      <div style={{fontSize:11,color:'#475569',marginBottom:12}}>Best individual single-season performances in franchise history. Year shown next to each.</div>{(()=>{const champs=(fr.history||[]).filter(h=>h.champion).slice().reverse();if(!champs.length)return null;return (<div style={{...card,padding:'12px 14px',marginBottom:14}}><div style={{fontSize:11,letterSpacing:2,color:'#fbbf24',fontWeight:800,marginBottom:8}}>🏆 WORLD SERIES CHAMPIONS</div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'3px 16px'}}>{champs.map(h=>{const t=MLB_TEAMS.find(x=>x.id===h.champion);const me=h.champion===fr.userTeamId;return (<div key={h.season} onClick={()=>goTeam(h.champion)} style={{cursor:'pointer',display:'flex',fontSize:12,padding:'2px 0',color:me?'#f59e0b':'#cbd5e1',fontWeight:me?800:500}}><span style={{color:'#64748b',width:34}}>'{String(h.season).padStart(2,'0')}</span><span style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{me?'✦ ':''}{t?t.city+' '+t.name:h.champion}</span></div>);})}</div></div>);})()}{(()=>{const rows=[];(fr.history||[]).forEach(h=>{(h.standings||[]).forEach(x=>rows.push({season:h.season,id:x.id,w:x.w,l:x.l}));});
       if(!rows.length)return null;
       const best=[...rows].sort((a,b)=>b.w-a.w||a.l-b.l).slice(0,5);
       const worst=[...rows].sort((a,b)=>a.w-b.w||b.l-a.l).slice(0,5);
-      const Row=r=>{const t=MLB_TEAMS.find(x=>x.id===r.id);const me=r.id===fr.userTeamId;return (<div key={r.id+'-'+r.season} style={{display:'flex',fontSize:11,padding:'1.5px 0',color:me?'#f59e0b':'#cbd5e1',fontWeight:me?700:400}}><span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t?t.city+' '+t.name:r.id}</span><span style={{color:'#64748b',fontSize:9,width:26}}>{"'"+String(r.season).padStart(2,'0')}</span><span style={{fontFamily:'monospace',width:52,textAlign:'right'}}>{r.w}-{r.l}</span></div>);};
+      const Row=r=>{const t=MLB_TEAMS.find(x=>x.id===r.id);const me=r.id===fr.userTeamId;return (<div key={r.id+'-'+r.season} onClick={()=>goTeam(r.id)} style={{cursor:'pointer',display:'flex',fontSize:11,padding:'1.5px 0',color:me?'#f59e0b':'#cbd5e1',fontWeight:me?700:400}}><span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t?t.city+' '+t.name:r.id}</span><span style={{color:'#64748b',fontSize:9,width:26}}>{"'"+String(r.season).padStart(2,'0')}</span><span style={{fontFamily:'monospace',width:52,textAlign:'right'}}>{r.w}-{r.l}</span></div>);};
       return (<div style={{...card,padding:'12px 14px',marginBottom:14}}>
       <div style={{fontSize:11,letterSpacing:2,color:'#86efac',fontWeight:800,marginBottom:8}}>TEAM SEASONS</div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'12px 18px'}}>
@@ -8612,7 +8615,7 @@ function FranchiseScreen({players,onExit}){
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(195px,1fr))',gap:'12px 16px'}}>
           {cats.map(c=>{const rows=frCareerTop(arr,c[1],5,c[3]);return (<div key={c[1]}>
             <div style={{fontSize:10,color:'#94a3b8',fontWeight:800,marginBottom:3,borderBottom:'1px solid #1e3a5f',paddingBottom:2}}>{c[0]}</div>
-            {rows.map((r,ri2)=>(<div key={ri2} style={{display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}>
+            {rows.map((r,ri2)=>(<div key={ri2} onClick={()=>goTeam(r.teamId)} style={{cursor:'pointer',display:'flex',fontSize:11,padding:'1.5px 0',color:r.teamId===fr.userTeamId?'#f59e0b':'#cbd5e1'}}>
               <span style={{width:13,color:'#475569'}}>{ri2+1}</span>
               <span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.name}{r.active?'*':''}</span>
               <span style={{color:'#64748b',fontSize:9,width:30}}>{r.yrs}yr</span>
@@ -8750,7 +8753,7 @@ function FranchiseScreen({players,onExit}){
           </div>
         </div>
         {divisions.filter(([lg])=>lg===curLg).map(([lg,dv])=>{const d=standings[lg+'|'+dv];const lead=d[0];const seeds=lg==='AL'?alSeeds:nlSeeds;return (<div key={lg+dv} style={{marginBottom:11}}><div style={{fontSize:9,letterSpacing:1.5,color:'#334155',fontWeight:800,marginBottom:3}}>{lg} {dv.toUpperCase()}</div>
-          {d.map((t,idx)=>{const gb=idx===0?0:((lead.w-t.w)+(t.l-lead.l))/2;const isMe=t.id===fr.userTeamId;const inPO=seeds&&seeds.has(t.id);const isDivLead=idx===0&&gp>0;return (<div key={t.id} onClick={()=>{setSel(t.id);setStatMode('season');setView('team');}} style={{display:'flex',alignItems:'center',padding:'3px 8px',fontSize:11,borderRadius:5,cursor:'pointer',background:isMe?'rgba(245,158,11,0.1)':'transparent',color:isMe?'#f59e0b':'#cbd5e1',fontWeight:isMe?700:400}}>
+          {d.map((t,idx)=>{const gb=idx===0?0:((lead.w-t.w)+(t.l-lead.l))/2;const isMe=t.id===fr.userTeamId;const inPO=seeds&&seeds.has(t.id);const isDivLead=idx===0&&gp>0;return (<div key={t.id} onClick={()=>{setSel(t.id);setStatMode('season');setView('team');}} onMouseEnter={e=>e.currentTarget.style.background='rgba(148,163,184,0.08)'} onMouseLeave={e=>e.currentTarget.style.background=isMe?'rgba(245,158,11,0.1)':'transparent'} style={{display:'flex',alignItems:'center',padding:'3px 8px',fontSize:11,borderRadius:5,cursor:'pointer',background:isMe?'rgba(245,158,11,0.1)':'transparent',color:isMe?'#f59e0b':'#cbd5e1',fontWeight:isMe?700:400}}>
             <span style={{flex:1}}>{(inPO||isDivLead)?<span style={{color:'#22c55e',marginRight:3}}>✦</span>:null}{t.city} {t.name}</span>
             <span style={{fontFamily:'monospace',width:54,textAlign:'right'}}>{t.w}-{t.l}</span>
             <span style={{fontFamily:'monospace',width:40,textAlign:'right',color:'#475569'}}>{gb===0?'—':gb.toFixed(1)}</span></div>);})}
