@@ -7578,7 +7578,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v13 — five-year minimum careers & clickable team pages everywhere
+// FRANCHISE MODE v14 — winter draft classes: the player pool replenishes itself
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -7664,6 +7664,49 @@ function frHofEligible(career,isPit){
   if(isPit&&((career.w||0)>=220||(career.so||0)>=2800||(career.sv||0)>=350))return true;
   return false;
 }
+const FR_GEN_FIRST=['Ace','Andre','Auggie','Bennett','Bo','Booker','Brick','Cal','Cash','Cedric','Chance','Cisco','Cole','Cruz','Dax','Deacon','Dell','Denny','Diego','Duke','Dusty','Eli','Emmett','Ezra','Felix','Finn','Flash','Gus','Hank','Harlan','Hollis','Hugo','Ike','Iván','Jasper','Jett','Joaquín','Jude','Kip','Knox','Lefty','Lino','Mack','Mateo','Milo','Moses','Nash','Nico','Obie','Otis','Pancho','Quinn','Rafe','Ramón','Red','Rex','Rocco','Roscoe','Rudy','Sal','Sandy','Silas','Sonny','Tate','Teo','Tito','Tuck','Vance','Wade','Zeke'];
+const FR_GEN_LAST=['Abernathy','Alcántara','Banks','Barlow','Bellweather','Bonilla','Briggs','Burchfield','Caldera','Calloway','Cartwright','Cisneros','Colfax','Crane','Cuevas','Dalton','Delacroix','Drummond','Eastwood','Echevarría','Fairbanks','Fontaine','Fuentes','Gallagher','Granger','Greenwood','Hatfield','Hawthorne','Holloway','Ibarra','Irons','Juarez','Keller','Kingsley','Lachance','Lockhart','Maddox','Marbury','Mercado','Montrose','Navarro','Northcutt','Oakley','Ocampo','Palafox','Pemberton','Quintero','Rafferty','Redmond','Reyes','Rockwell','Saavedra','Settles','Slate','Sterling','Stonebrook','Tatum','Thackery','Umphrey','Valdez','Vandermeer','Vega','Wainwright','Westbrook','Whitfield','Wilder','Winslow','Yancey','Zambrano','Zeller'];
+function frGenProspects(fr,n,taken){
+  const out=[];const yy=String((fr.season+1)%100).padStart(2,'0');
+  const POS8=['C','1B','2B','3B','SS','LF','CF','RF'];
+  for(let i=0;i<n;i++){
+    let name='',tries=0;
+    do{name=FR_GEN_FIRST[Math.floor(frRnd()*FR_GEN_FIRST.length)]+' '+FR_GEN_LAST[Math.floor(frRnd()*FR_GEN_LAST.length)];tries++;
+      if(tries>40){name=name+' Jr.';break;}}while(taken.has(name));
+    taken.add(name);
+    // talent curve: mostly regulars, occasional stars, rare generational talents
+    const r=frRnd();
+    let war=r<0.02?8.5+frRnd()*3:r<0.10?6+frRnd()*2.2:r<0.32?4+frRnd()*2:1.6+frRnd()*2.4;
+    const tr=frRnd();const type=tr<0.50?'hitter':'pitcher';
+    const role=type==='pitcher'?(tr<0.78?'SP':'RP'):null;
+    if(role==='RP')war=Math.min(war,1.2+frRnd()*2.4);
+    let card;
+    if(type==='hitter'){
+      const pos=POS8[Math.floor(frRnd()*POS8.length)];
+      const arch=frRnd(); // <0.30 contact/speed, >0.62 power
+      const wrc=Math.round(frClamp(95+war*7.5+frGauss(0,6),72,182));
+      const avg=frClamp(0.246+(wrc-100)*0.0011+(arch<0.30?0.024:0)+frGauss(0,0.012),0.212,0.348);
+      const hr=Math.round(frClamp((arch>0.62?25:12)+(wrc-100)*0.27+frGauss(0,5),3,52));
+      const obp=frClamp(avg+0.052+(wrc-100)*0.00065+frGauss(0,0.010),avg+0.022,0.455);
+      const slg=frClamp(0.350+(wrc-100)*0.0022+hr*0.0024+frGauss(0,0.02),avg+0.05,0.660);
+      const bsr=frClamp(arch<0.25?(2+frRnd()*4.5):frGauss(0,1.6),-4,7.5);
+      const dwar=frClamp(frGauss((pos==='C'||pos==='SS'||pos==='CF')?0.8:0.2,1.0),-1.6,2.9);
+      card={id:'gen_'+fr.season+'_'+i+'_'+Math.floor(frRnd()*1e6),name,type:'hitter',role:null,
+        team:'✦',decade:"Class '"+yy,eligiblePositions:[pos],avgWARperYear:Math.round(war*10)/10,
+        stats:{wrcPlus:wrc,avg:Math.round(avg*1000)/1000,obp:Math.round(obp*1000)/1000,slg:Math.round(slg*1000)/1000,hr,bsr:Math.round(bsr*10)/10,dwar:Math.round(dwar*10)/10}};
+    } else {
+      const era=frClamp(4.35-war*0.33+frGauss(0,0.25),1.95,5.20);
+      const fip=frClamp(era+frGauss(0,0.18),1.85,5.20);
+      const k9=frClamp(7.2+war*0.5+frGauss(0,0.9),5.0,12.5);
+      const whip=frClamp(1.32-war*0.05+frGauss(0,0.05),0.85,1.55);
+      card={id:'gen_'+fr.season+'_'+i+'_'+Math.floor(frRnd()*1e6),name,type:'pitcher',role,
+        team:'✦',decade:"Class '"+yy,eligiblePositions:[role],avgWARperYear:Math.round(war*10)/10,
+        stats:{era:Math.round(era*100)/100,fip:Math.round(fip*100)/100,k9:Math.round(k9*10)/10,whip:Math.round(whip*100)/100}};
+    }
+    out.push(card);
+  }
+  return out;
+}
 function frBuildOffseason(fr,playersAll){
   const teams={};const retirees=[];const retiredNames=[...(fr.retiredNames||[])];
   Object.entries(fr.teams).forEach(([tid,t])=>{
@@ -7681,7 +7724,20 @@ function frBuildOffseason(fr,playersAll){
     teams[tid]={...t,roster:ros};
   });
   retirees.sort((a,b)=>((b.teamId===fr.userTeamId)-(a.teamId===fr.userTeamId))||(((b.career&&b.career.war)||0)-((a.career&&a.career.war)||0)));
-  return {...fr,teams,retiredNames,offseason:{stage:'retire',season:fr.season,retirees,signedLog:[]}};
+  // Winter draft class: one new prospect enters the pool per retiree, so the
+  // league never runs dry - even in a 50-season franchise.
+  const rosterNames=new Set();Object.values(teams).forEach(t=>FR_ALL_SLOTS.forEach(sl=>{if(t.roster[sl])rosterNames.add(t.roster[sl].name);}));
+  const retSet=new Set(retiredNames);
+  const collide=new Set([...rosterNames,...retSet]);
+  frDedupPool(playersAll).forEach(p=>collide.add(p.name));
+  (fr.genPool||[]).forEach(p=>collide.add(p.name));
+  const cls=frGenProspects(fr,retirees.length,collide);
+  const genPool=[...(fr.genPool||[]),...cls]
+    .filter(p=>!retSet.has(p.name)&&!rosterNames.has(p.name))
+    .sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0))
+    .slice(0,400); // weakest unsigned prospects wash out of the minors
+  const top=cls.slice().sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,3).map(p=>({name:p.name,war:p.avgWARperYear||0}));
+  return {...fr,teams,retiredNames,genPool,offseason:{stage:'retire',season:fr.season,retirees,draftClass:{count:cls.length,top},signedLog:[]}};
 }
 function frDebutAge(name,season){let h=0;for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;return 23+((h+(season||0)*7)%7);}
 function frSlotFits(p,sl){
@@ -7696,7 +7752,7 @@ function frFillVacancies(fr,playersAll,teamIds){
   const os=fr.offseason||{};
   const taken=new Set(fr.retiredNames||[]);
   Object.values(fr.teams).forEach(t=>FR_ALL_SLOTS.forEach(sl=>{if(t.roster[sl])taken.add(t.roster[sl].name);}));
-  let avail=frDedupPool(playersAll).filter(p=>!taken.has(p.name)).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
+  let avail=frDedupPool(playersAll).concat(fr.genPool||[]).filter(p=>!taken.has(p.name)).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
   const order=(teamIds||MLB_TEAMS.map(t=>t.id)).slice().sort((a,b)=>((fr.teams[a].record&&fr.teams[a].record.w)||0)-((fr.teams[b].record&&fr.teams[b].record.w)||0));
   const teams={...fr.teams};const signedLog=[...((os&&os.signedLog)||[])];
   order.forEach(tid=>{
@@ -7725,6 +7781,7 @@ function frMigrateAges(f){
     nf={...nf,hof};ch=true;
   }
   if(nf.season>nf.franchiseLength&&!nf.extended){nf={...nf,extended:true};ch=true;}
+  if(!nf.genPool){nf={...nf,genPool:[]};ch=true;}
   if(!ch)return f;
   return {...nf,retiredNames:nf.retiredNames||[],retired:nf.retired||[]};
 }
@@ -8318,10 +8375,10 @@ function FranchiseScreen({players,onExit}){
     const f2=v=>(v==null?'—':(+v).toFixed(2));
     const f1=v=>(v==null?'—':(+v).toFixed(1));
     const hitCols=statMode==='season'
-      ? [['AVG',p=>f3(p.seasonStats.avg)],['OBP',p=>f3(p.seasonStats.obp)],['SLG',p=>f3(p.seasonStats.slg)],['HR',p=>p.seasonStats.hr],['RBI',p=>p.seasonStats.rbi],['R',p=>p.seasonStats.r],['SB',p=>p.seasonStats.sb],['WAR',p=>f1(p.seasonStats.war)]]
+      ? [['AVG',p=>p.seasonStats?f3(p.seasonStats.avg):'—'],['OBP',p=>p.seasonStats?f3(p.seasonStats.obp):'—'],['SLG',p=>p.seasonStats?f3(p.seasonStats.slg):'—'],['HR',p=>p.seasonStats?p.seasonStats.hr:'—'],['RBI',p=>p.seasonStats?p.seasonStats.rbi:'—'],['R',p=>p.seasonStats?p.seasonStats.r:'—'],['SB',p=>p.seasonStats?p.seasonStats.sb:'—'],['WAR',p=>p.seasonStats?f1(p.seasonStats.war):'—']]
       : [['Yrs',p=>p.career?p.career.seasons:'—'],['HR',p=>p.career?p.career.hr:'—'],['RBI',p=>p.career?p.career.rbi:'—'],['R',p=>p.career?p.career.r:'—'],['H',p=>p.career?p.career.h:'—'],['SB',p=>p.career?p.career.sb:'—'],['WAR',p=>p.career?f1(p.career.war):'—']];
     const pitCols=statMode==='season'
-      ? [['W',p=>p.seasonStats.w],['L',p=>p.seasonStats.l],['ERA',p=>f2(p.seasonStats.era)],['IP',p=>p.seasonStats.ip],['K',p=>p.seasonStats.so],['SV',p=>p.seasonStats.sv],['WHIP',p=>f2(p.seasonStats.whip)],['WAR',p=>f1(p.seasonStats.war)]]
+      ? [['W',p=>p.seasonStats?p.seasonStats.w:'—'],['L',p=>p.seasonStats?p.seasonStats.l:'—'],['ERA',p=>p.seasonStats?f2(p.seasonStats.era):'—'],['IP',p=>p.seasonStats?p.seasonStats.ip:'—'],['K',p=>p.seasonStats?p.seasonStats.so:'—'],['SV',p=>p.seasonStats?p.seasonStats.sv:'—'],['WHIP',p=>f2(p.seasonStats?p.seasonStats.whip:null)],['WAR',p=>p.seasonStats?f1(p.seasonStats.war):'—']]
       : [['Yrs',p=>p.career?p.career.seasons:'—'],['W',p=>p.career?p.career.w:'—'],['L',p=>p.career?p.career.l:'—'],['ERA',p=>p.career&&p.career.ip?f2(p.career.er*9/p.career.ip):'—'],['IP',p=>p.career?Math.round(p.career.ip):'—'],['K',p=>p.career?p.career.so:'—'],['SV',p=>p.career?p.career.sv:'—'],['WAR',p=>p.career?f1(p.career.war):'—']];
     const Hdr=({cols})=>(<div style={{display:'flex',alignItems:'center',padding:'2px 8px',fontSize:9,color:'#475569',fontWeight:800}}><span style={{width:28}}></span><span style={{flex:1,minWidth:84}}></span>{cols.map((c,ci)=>(<span key={ci} style={{width:40,textAlign:'right'}}>{c[0]}</span>))}</div>);
     const Rows=({slots,cols})=>slots.map(sl=>{const p=team.roster[sl];if(!p)return null;return (<div key={sl} style={{display:'flex',alignItems:'center',padding:'5px 8px',borderBottom:'1px solid #080f1e',fontSize:11}}>
@@ -8382,10 +8439,14 @@ function FranchiseScreen({players,onExit}){
             {lgRet.length>12&&<div style={{fontSize:11,color:'#475569',marginTop:4}}>…and {lgRet.length-12} more hang up their spikes.</div>}
           </div>}
         </div>
+        {os.draftClass&&os.draftClass.count>0&&(<div style={{...card,padding:'12px 16px',marginBottom:14,borderColor:'rgba(134,239,172,0.3)'}}>
+          <div style={{fontSize:10,letterSpacing:2,color:'#86efac',fontWeight:800,marginBottom:6}}>🌱 WINTER DRAFT CLASS</div>
+          <div style={{fontSize:12,color:'#94a3b8',lineHeight:1.5}}>{os.draftClass.count} new prospects enter the player pool{os.draftClass.top&&os.draftClass.top.length?<span> — headlined by <span style={{color:'#e2e8f0',fontWeight:700}}>{os.draftClass.top.map(x=>x.name+' ('+(x.war||0).toFixed(1)+')').join(' · ')}</span></span>:null}.</div>
+        </div>)}
         <div style={{textAlign:'center'}}><button onClick={()=>{const nf={...fr,offseason:{...os,stage:'fa'}};saveFranchise(nf);setFr(nf);setFaSlot(null);}} style={{...gold,padding:'12px 32px',fontSize:14}}>Continue to Free Agency →</button></div>
       </div></div>);
     }
-    const byName=(()=>{const m={};players.forEach(p=>{const cur=m[p.name];if(!cur||((p.avgWARperYear||0)>(cur.avgWARperYear||0)))m[p.name]=p;});return m;})();
+    const byName=(()=>{const m={};players.forEach(p=>{const cur=m[p.name];if(!cur||((p.avgWARperYear||0)>(cur.avgWARperYear||0)))m[p.name]=p;});(fr.genPool||[]).forEach(p=>{if(!m[p.name])m[p.name]=p;});return m;})();
     const takenNow=new Set(fr.retiredNames||[]);Object.values(fr.teams).forEach(t=>FR_ALL_SLOTS.forEach(sl=>{if(t.roster[sl])takenNow.add(t.roster[sl].name);}));
     const selSlot=myVac.includes(faSlot)?faSlot:(myVac[0]||null);
     const availAll=Object.values(byName).filter(p=>!takenNow.has(p.name)).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
