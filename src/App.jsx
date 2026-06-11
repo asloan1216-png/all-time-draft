@@ -7578,7 +7578,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v15 — smoother strength curve, draft-day ages & full eligibility on the board
+// FRANCHISE MODE v16 — the ledger balances: staff W-L reconciles exactly to every club record
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -8120,13 +8120,36 @@ function frAwards(allHit,allPit){
   return out;
 }
 
+// Exactly one W and one L per game lives in each clubhouse: rescale generated
+// pitcher decisions (largest-remainder, proportional) so the staff sums to the
+// club's true record. The ace keeps the most wins, the worst arm the most
+// losses - but the team page now always adds up to the standings.
+function frReconcileDecisions(lines,W,L){
+  if(!lines.length)return;
+  const fix=(field,target)=>{
+    let sum=lines.reduce((t,x)=>t+(x[field]||0),0);
+    if(sum<=0){lines.forEach((x,i)=>x[field]=i===0?target:0);return;}
+    const exact=lines.map(x=>(x[field]||0)*target/sum);
+    lines.forEach((x,i)=>x[field]=Math.floor(exact[i]));
+    let rem=target-lines.reduce((t,x)=>t+x[field],0);
+    const order=exact.map((e,i)=>[e-Math.floor(e),i]).sort((a,b)=>b[0]-a[0]);
+    for(let k=0;k<order.length&&rem>0;k++){lines[order[k][1]][field]++;rem--;}
+    while(rem>0){lines[0][field]++;rem--;}
+  };
+  fix('w',W);fix('l',L);
+  let sv=lines.reduce((t,x)=>t+(x.sv||0),0); // saves can never exceed club wins
+  if(sv>W){let over=sv-W;for(const x of lines){if(over<=0)break;const cut=Math.min(x.sv||0,over);x.sv=(x.sv||0)-cut;over-=cut;}}
+}
 function frGenerateSeasonStats(fr){
   const season=fr.season,allHit=[],allPit=[],teams={};
   Object.entries(fr.teams).forEach(([tid,team])=>{
     const w=team.record.w,l=team.record.l,twp=(w+l)?w/(w+l):0.5,wAdj=1+(twp-0.5),ros={};
     FR_HIT_SLOTS.forEach(s=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatHitter(p,twp);line.war=Math.round(Math.max(-2,Math.min(13.5,line.war*wAdj))*10)/10;ros[s]={...p,seasonStats:line,career:frAccCareer(p.career,line,false)};allHit.push({name:p.name,teamId:tid,line});});
-    FR_SP_SLOTS.forEach((s,i)=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatPitcher(p,'SP',i,twp,w);line.war=Math.round(Math.max(-2,Math.min(13.5,line.war*wAdj))*10)/10;ros[s]={...p,seasonStats:line,career:frAccCareer(p.career,line,true)};allPit.push({name:p.name,teamId:tid,line});});
-    FR_RP_SLOTS.forEach((s,i)=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatPitcher(p,'RP',i,twp,w);line.war=Math.round(Math.max(-2,Math.min(13.5,line.war*wAdj))*10)/10;ros[s]={...p,seasonStats:line,career:frAccCareer(p.career,line,true)};allPit.push({name:p.name,teamId:tid,line});});
+    const pitTmp=[];
+    FR_SP_SLOTS.forEach((s,i)=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatPitcher(p,'SP',i,twp,w);line.war=Math.round(Math.max(-2,Math.min(13.5,line.war*wAdj))*10)/10;pitTmp.push({s,p,line});});
+    FR_RP_SLOTS.forEach((s,i)=>{const p=team.roster[s];if(!p){ros[s]=p;return;}const line=frStatPitcher(p,'RP',i,twp,w);line.war=Math.round(Math.max(-2,Math.min(13.5,line.war*wAdj))*10)/10;pitTmp.push({s,p,line});});
+    frReconcileDecisions(pitTmp.map(x=>x.line),w,l); // staff W-L == club W-L, before careers accumulate
+    pitTmp.forEach(({s,p,line})=>{ros[s]={...p,seasonStats:line,career:frAccCareer(p.career,line,true)};allPit.push({name:p.name,teamId:tid,line});});
     teams[tid]={...team,roster:ros};
   });
   const leaders=frComputeLeaders(allHit,allPit);
