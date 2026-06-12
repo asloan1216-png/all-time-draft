@@ -6070,7 +6070,12 @@ const ERA_PITCH_ADJ = {
   '1990s':0.97, '2000s':1.00, '2010s':1.00, '2020s':1.00,
 };
 
-const LG_AVG_RPG = 4.30; // Neutral modern run environment
+const LG_AVG_RPG = 4.30;
+
+// One franchise, many uniforms: same club across renames and moves, so spinning
+// e.g. the 2000s Angels surfaces BOTH the ANA and LAA halves of the decade.
+const CLUB_LINEAGES=[['LAA','CAL','ANA'],['LAD','BRO'],['SFG','NYG'],['OAK','PHA','KCA','ATH'],['BAL','SLB'],['MIA','FLA'],['TBR','TBD'],['WSN','MON'],['ATL','BSN']];
+function clubMatch(a,b){if(a===b)return true;if(!a||!b)return false;return CLUB_LINEAGES.some(g=>g.includes(a)&&g.includes(b));} // Neutral modern run environment
 
 // ── OFFENSE: average wRC+ → runs per game ────────────────────────
 // Multiplicative below 140 wRC+ (matches real team seasons exactly).
@@ -9026,7 +9031,7 @@ export default function App(){
       // STRICT filtering: only players who actually played for that team in that decade
       const strictPool=players.filter(p=>
         notDrafted(p) &&
-        p.team===res.team &&
+        clubMatch(p.team,res.team) &&
         p.decade===res.decade
       ).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
 
@@ -9284,7 +9289,7 @@ export default function App(){
 
           {poolPickable&&(
             <>
-              {pool.every(p=>p.team!==spinRes?.team)&&(
+              {pool.every(p=>!clubMatch(p.team,spinRes?.team))&&(
                 <div style={{fontSize:11,color:'#475569',marginBottom:10,fontStyle:'italic'}}>No {spinRes?.team} players available — showing best from the {spinRes?.decade}</div>
               )}
               <div style={{width:'100%',maxWidth:1000,marginTop:12,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
@@ -9352,7 +9357,7 @@ export default function App(){
                       const dIds=new Set(Object.values(roster).filter(Boolean).map(p=>p.id));
                       const dNames=new Set(Object.values(roster).filter(Boolean).map(p=>(p.displayName||p.name||'').replace(/ \d-yr$/,'')));
                       const notD=p=>{if(dIds.has(p.id))return false;const dn=(p.displayName||p.name||'').replace(/ \d-yr$/,'');return !dNames.has(dn);};
-                      const strict=players.filter(p=>notD(p)&&p.team===res.team&&p.decade===res.decade).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
+                      const strict=players.filter(p=>notD(p)&&clubMatch(p.team,res.team)&&p.decade===res.decade).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0));
                       const fallback=strict.length>0?strict:players.filter(p=>notD(p)&&p.decade===res.decade).sort((a,b)=>(b.avgWARperYear||0)-(a.avgWARperYear||0)).slice(0,8);
                       setPool(fallback);
                     },1600);
