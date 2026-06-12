@@ -7578,7 +7578,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v16 — the ledger balances: staff W-L reconciles exactly to every club record
+// FRANCHISE MODE v17 — mobile-friendly layouts & choose-your-spot drafting
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -7619,6 +7619,18 @@ function frAssignPreview(p,r){
   const c={...r};frAssign(p,c);
   for(const k of FR_ALL_SLOTS){if(c[k]&&!r[k])return k;}
   return null;
+}
+// Like frApplyPick, but the player goes to the slot YOU chose (Classic-style).
+function frApplyPickAt(d,player,tid,slot){
+  if(d.rosters[tid][slot])return d; // occupied
+  const rosters={...d.rosters,[tid]:{...d.rosters[tid]}};
+  rosters[tid][slot]=player;
+  const avail=d.avail.filter(p=>p.name!==player.name);
+  const you=d.order[d.userIdx]===tid;
+  const log=[{rnd:d.round+1,team:tid,name:player.name,pos:FR_SLOT_POS[slot]||slot.toUpperCase(),you},...d.log].slice(0,40);
+  let {round,pickInRound,overall}=d; overall++; pickInRound++;
+  if(pickInRound>=30){pickInRound=0;round++;}
+  return {...d,rosters,avail,log,round,pickInRound,overall,done:round>=18};
 }
 function frApplyPick(d,player,tid){
   const rosters={...d.rosters,[tid]:{...d.rosters[tid]}};
@@ -8190,6 +8202,9 @@ function FranchiseScreen({players,onExit}){
   const [faSlot,setFaSlot]=useState(null);
   const [recTab,setRecTab]=useState('season');
   const goTeam=id=>{if(!fr||!fr.teams||!fr.teams[id])return;setSel(id);setStatMode('season');setView('team');};
+  const [pickSel,setPickSel]=useState(null);
+  const [isMob,setIsMob]=useState(()=>typeof window!=='undefined'&&window.innerWidth<=760);
+  useEffect(()=>{if(typeof window==='undefined')return;const f=()=>setIsMob(window.innerWidth<=760);window.addEventListener('resize',f);return()=>window.removeEventListener('resize',f);},[]);
   const poolRef=useRef(null);
   if(!poolRef.current)poolRef.current=frDedupPool(players);
   const pool=poolRef.current;
@@ -8221,6 +8236,14 @@ function FranchiseScreen({players,onExit}){
     const p=draft.avail.find(x=>x.name===name);
     if(!p||!frCanFill(p,draft.rosters[tid]))return;
     setDraft(d=>frApplyPick(d,p,tid));
+  }
+  function userPickAt(name,slot){
+    const tid=draft.order[frTeamOnClock(draft)];
+    const p=draft.avail.find(x=>x.name===name);
+    if(!p||draft.rosters[tid][slot])return;
+    if(slot!=='dh'&&!frEligSlots(p).includes(slot))return;
+    setDraft(d=>frApplyPickAt(d,p,tid,slot));
+    setPickSel(null);
   }
   function doSim(n){
     if(n<=0)return;
@@ -8274,7 +8297,7 @@ function FranchiseScreen({players,onExit}){
     nextSeason(nf);
   }
 
-  const card={background:'rgba(8,16,32,0.8)',border:'1px solid #0f1f35',borderRadius:12};
+  const card={background:'rgba(8,16,32,0.8)',border:'1px solid #0f1f35',borderRadius:12,overflowX:'auto'};
   const wrap={minHeight:'100vh',background:'radial-gradient(ellipse at 50% -10%,#0d2848,#050c18 60%)',padding:'24px 16px'};
   const ghost={background:'transparent',border:'1px solid #1e3a5f',color:'#94a3b8',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:700};
   const gold={background:'#f59e0b',color:'#000',border:'none',borderRadius:8,cursor:'pointer',fontWeight:800};
@@ -8347,18 +8370,25 @@ function FranchiseScreen({players,onExit}){
           <div style={{fontSize:18,fontWeight:800,marginTop:2}}>{yourTurn?<span style={{color:'#f59e0b'}}>⚾ YOU ARE ON THE CLOCK</span>:draft.done?<span style={{color:'#22c55e'}}>Draft complete - finalizing...</span>:<span>{clock.city} {clock.name} <span style={{color:'#475569'}}>are picking…</span></span>}</div></div>
         <div style={{textAlign:'right'}}><div style={{fontSize:10,color:'#475569'}}>YOUR TEAM</div><div style={{color:'#f59e0b',fontWeight:800,fontSize:14}}>{meTeam.city} {meTeam.name}</div></div>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:14}}>
+      <div style={{display:'grid',gridTemplateColumns:isMob?'1fr':'1.4fr 1fr',gap:14}}>
         <div style={{...card,padding:'12px 14px'}}>
           <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>{posTabs.map(t=>(<div key={t} onClick={()=>setTab(t)} style={{padding:'5px 9px',border:'1px solid '+(tab===t?'#f59e0b':'#1e3a5f'),borderRadius:6,cursor:'pointer',fontSize:11,color:tab===t?'#f59e0b':'#94a3b8',background:tab===t?'rgba(245,158,11,0.1)':'transparent',whiteSpace:'nowrap'}}>{t==='needs'?'My Needs':t==='all'?'All':t}</div>))}</div>
           <div style={{maxHeight:440,overflowY:'auto'}}>
           {yourTurn?list.map(p=>{const ok=frCanFill(p,myRoster);const pr=frPrimary(p);return (
-            <div key={p.name} onClick={()=>ok&&userPick(p.name)} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderBottom:'1px solid #0a1424',fontSize:12,cursor:ok?'pointer':'not-allowed',opacity:ok?1:0.3,borderRadius:6}}>
+            <React.Fragment key={p.name}><div onClick={()=>{if(!ok)return;if(p.type==='pitcher'){userPick(p.name);}else{setPickSel(v=>v===p.name?null:p.name);}}} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderBottom:'1px solid #0a1424',fontSize:12,cursor:ok?'pointer':'not-allowed',opacity:ok?1:0.3,borderRadius:6,background:pickSel===p.name?'rgba(134,239,172,0.06)':'transparent'}}>
               <span style={{fontSize:9,fontWeight:800,padding:'2px 5px',borderRadius:4,fontFamily:'monospace',minWidth:28,textAlign:'center',background:FR_POS_COLOR[pr]+'22',color:FR_POS_COLOR[pr],whiteSpace:'nowrap'}}>{p.type==='pitcher'?pr:((p.eligiblePositions&&p.eligiblePositions.length)?p.eligiblePositions.join('/'):pr)}</span>
               <span style={{flex:1,color:'#e2e8f0',fontWeight:600}}>{p.name}</span>
               <span style={{color:'#94a3b8',fontSize:10,width:34,textAlign:'right',whiteSpace:'nowrap'}}>{p.age!=null?p.age+'yo':''}</span>
               <span style={{color:'#475569',fontFamily:'monospace',fontSize:10,marginLeft:6}}>{p.team} · {p.decade}</span>
               {ok&&(()=>{const sl2=frAssignPreview(p,myRoster);if(!sl2)return null;const lbl=FR_SP_SLOTS.includes(sl2)?sl2.toUpperCase():FR_RP_SLOTS.includes(sl2)?(sl2==='rp1'?'CL':sl2.toUpperCase()):(FR_SLOT_POS[sl2]||sl2.toUpperCase());return <span style={{color:'#86efac',fontSize:10,fontWeight:800,width:44,textAlign:'right',whiteSpace:'nowrap'}}>→ {lbl}</span>;})()}
-              <span style={{color:'#f59e0b',fontFamily:'monospace',width:42,textAlign:'right'}}>{(p.avgWARperYear||0).toFixed(1)}</span></div>);})
+              <span style={{color:'#f59e0b',fontFamily:'monospace',width:42,textAlign:'right'}}>{(p.avgWARperYear||0).toFixed(1)}</span></div>
+              {ok&&pickSel===p.name&&p.type!=='pitcher'&&(()=>{const open=FR_HIT_SLOTS.filter(s2=>!myRoster[s2]&&(s2==='dh'||frEligSlots(p).includes(s2)));const sug=frAssignPreview(p,myRoster);
+                return (<div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:6,padding:'8px 10px',background:'rgba(134,239,172,0.05)',border:'1px solid rgba(134,239,172,0.25)',borderRadius:8,margin:'2px 0 6px'}}>
+                  <span style={{fontSize:10,color:'#86efac',fontWeight:800,letterSpacing:1}}>PLACE AT</span>
+                  {open.map(s2=>(<button key={s2} onClick={()=>userPickAt(p.name,s2)} style={{background:s2===sug?'#86efac':'rgba(134,239,172,0.12)',color:s2===sug?'#052e16':'#86efac',border:'1px solid rgba(134,239,172,0.4)',borderRadius:6,padding:'5px 12px',fontWeight:800,fontSize:12,cursor:'pointer'}}>{FR_SLOT_POS[s2]}{s2===sug?' \u2605':''}</button>))}
+                  <button onClick={()=>setPickSel(null)} style={{marginLeft:'auto',background:'none',border:'none',color:'#64748b',fontSize:11,cursor:'pointer'}}>cancel</button>
+                </div>);})()}
+            </React.Fragment>);})
           :<div style={{textAlign:'center',padding:40,color:'#475569',fontSize:13}}>The AI clubs are drafting…<br/><span style={{fontSize:11}}>picks resolve automatically — your turn is coming.</span></div>}
           </div>
         </div>
@@ -8834,7 +8864,7 @@ function FranchiseScreen({players,onExit}){
       </div>
     </div>
 
-    <div style={{display:'grid',gridTemplateColumns:'1.05fr 0.95fr',gap:18}}>
+    <div style={{display:'grid',gridTemplateColumns:isMob?'1fr':'1.05fr 0.95fr',gap:18}}>
       <div style={{...card,padding:'14px 16px'}}>
         <div className="serif" style={{fontSize:13,fontWeight:800,color:'#f1f5f9',marginBottom:8,fontFamily:'Georgia,serif'}}>Your Roster</div>
         <Roster slots={FR_HIT_SLOTS} label="LINEUP" accent="#60a5fa"/><Roster slots={FR_SP_SLOTS} label="ROTATION" accent="#60a5fa"/><Roster slots={FR_RP_SLOTS} label="BULLPEN" accent="#a78bfa"/>
