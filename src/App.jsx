@@ -7578,7 +7578,7 @@ const S={sh:{fontSize:9,letterSpacing:3,color:'#334155',fontWeight:700,marginBot
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// FRANCHISE MODE v17 — mobile-friendly layouts & choose-your-spot drafting
+// FRANCHISE MODE v18 — draft board column headers & true column alignment
 // ═══════════════════════════════════════════════════════════════
 const MLB_TEAMS = [
   {id:'BAL',city:'Baltimore',name:'Orioles',league:'AL',division:'East'},{id:'BOS',city:'Boston',name:'Red Sox',league:'AL',division:'East'},{id:'NYY',city:'New York',name:'Yankees',league:'AL',division:'East'},{id:'TBR',city:'Tampa Bay',name:'Rays',league:'AL',division:'East'},{id:'TOR',city:'Toronto',name:'Blue Jays',league:'AL',division:'East'},
@@ -8374,12 +8374,20 @@ function FranchiseScreen({players,onExit}){
         <div style={{...card,padding:'12px 14px'}}>
           <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>{posTabs.map(t=>(<div key={t} onClick={()=>setTab(t)} style={{padding:'5px 9px',border:'1px solid '+(tab===t?'#f59e0b':'#1e3a5f'),borderRadius:6,cursor:'pointer',fontSize:11,color:tab===t?'#f59e0b':'#94a3b8',background:tab===t?'rgba(245,158,11,0.1)':'transparent',whiteSpace:'nowrap'}}>{t==='needs'?'My Needs':t==='all'?'All':t}</div>))}</div>
           <div style={{maxHeight:440,overflowY:'auto'}}>
+          {yourTurn&&(<div style={{position:'sticky',top:0,zIndex:1,background:'#0d1626',display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderBottom:'1px solid #1e3a5f',fontSize:9,letterSpacing:1.2,fontWeight:800,color:'#64748b'}}>
+            <span style={{minWidth:28,textAlign:'center'}}>POS</span>
+            <span style={{flex:1}}>PLAYER</span>
+            <span style={{width:34,textAlign:'right'}}>AGE</span>
+            {!isMob&&<span style={{width:96,textAlign:'right'}}>TEAM · ERA</span>}
+            <span style={{width:44,textAlign:'right'}}>FILLS</span>
+            <span style={{width:42,textAlign:'right'}}>WAR</span>
+          </div>)}
           {yourTurn?list.map(p=>{const ok=frCanFill(p,myRoster);const pr=frPrimary(p);return (
             <React.Fragment key={p.name}><div onClick={()=>{if(!ok)return;if(p.type==='pitcher'){userPick(p.name);}else{setPickSel(v=>v===p.name?null:p.name);}}} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderBottom:'1px solid #0a1424',fontSize:12,cursor:ok?'pointer':'not-allowed',opacity:ok?1:0.3,borderRadius:6,background:pickSel===p.name?'rgba(134,239,172,0.06)':'transparent'}}>
               <span style={{fontSize:9,fontWeight:800,padding:'2px 5px',borderRadius:4,fontFamily:'monospace',minWidth:28,textAlign:'center',background:FR_POS_COLOR[pr]+'22',color:FR_POS_COLOR[pr],whiteSpace:'nowrap'}}>{p.type==='pitcher'?pr:((p.eligiblePositions&&p.eligiblePositions.length)?p.eligiblePositions.join('/'):pr)}</span>
               <span style={{flex:1,color:'#e2e8f0',fontWeight:600}}>{p.name}</span>
               <span style={{color:'#94a3b8',fontSize:10,width:34,textAlign:'right',whiteSpace:'nowrap'}}>{p.age!=null?p.age+'yo':''}</span>
-              <span style={{color:'#475569',fontFamily:'monospace',fontSize:10,marginLeft:6}}>{p.team} · {p.decade}</span>
+              {!isMob&&<span style={{color:'#475569',fontFamily:'monospace',fontSize:10,width:96,textAlign:'right',whiteSpace:'nowrap',overflow:'hidden'}}>{p.team} · {p.decade}</span>}
               {ok&&(()=>{const sl2=frAssignPreview(p,myRoster);if(!sl2)return null;const lbl=FR_SP_SLOTS.includes(sl2)?sl2.toUpperCase():FR_RP_SLOTS.includes(sl2)?(sl2==='rp1'?'CL':sl2.toUpperCase()):(FR_SLOT_POS[sl2]||sl2.toUpperCase());return <span style={{color:'#86efac',fontSize:10,fontWeight:800,width:44,textAlign:'right',whiteSpace:'nowrap'}}>→ {lbl}</span>;})()}
               <span style={{color:'#f59e0b',fontFamily:'monospace',width:42,textAlign:'right'}}>{(p.avgWARperYear||0).toFixed(1)}</span></div>
               {ok&&pickSel===p.name&&p.type!=='pitcher'&&(()=>{const open=FR_HIT_SLOTS.filter(s2=>!myRoster[s2]&&(s2==='dh'||frEligSlots(p).includes(s2)));const sug=frAssignPreview(p,myRoster);
